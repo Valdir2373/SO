@@ -10,8 +10,16 @@
 #include <drivers/keyboard.h>
 #include <kernel/timer.h>
 #include <security/users.h>
+#include <apps/calculator.h>
+#include <apps/task_manager.h>
+#include <apps/about.h>
+#include <apps/network_manager.h>
+#include <apps/settings.h>
 #include <lib/string.h>
 #include <types.h>
+
+/* Menu aberto? */
+static bool menu_open = false;
 
 #define TASKBAR_HEIGHT  40
 #define TASKBAR_Y(h)    ((h) - TASKBAR_HEIGHT)
@@ -186,9 +194,68 @@ static void draw_taskbar(void) {
     }
 }
 
+/* Menu inicial — lista de aplicativos */
+typedef struct { const char *name; void (*open)(void); } menu_item_t;
+static const menu_item_t menu_items[] = {
+    { "Calculadora",      calculator_open     },
+    { "Task Manager",     task_manager_open   },
+    { "Rede",             network_manager_open},
+    { "Configuracoes",    settings_open       },
+    { "Sobre o Krypx",    about_open          },
+    { NULL, NULL }
+};
+#define MENU_ITEM_H   28
+#define MENU_W       180
+
+static void draw_menu(void) {
+    int ty = TASKBAR_Y(fb.height);
+    int nitems = 0;
+    while (menu_items[nitems].name) nitems++;
+    int mh = nitems * MENU_ITEM_H + 8;
+    int mx = 8, my = ty - mh - 4;
+
+    canvas_fill_rounded_rect(mx, my, MENU_W, mh, 6, 0x00263545);
+    canvas_draw_rounded_rect(mx, my, MENU_W, mh, 6, 0x00636E72);
+
+    int i;
+    for (i = 0; i < nitems; i++) {
+        int iy = my + 4 + i * MENU_ITEM_H;
+        canvas_draw_string(mx + 12, iy + 8, menu_items[i].name,
+                           0x00DFE6E9, COLOR_TRANSPARENT);
+        /* Linha divisória */
+        if (i < nitems-1)
+            canvas_draw_line(mx+4, iy+MENU_ITEM_H-1, mx+MENU_W-4, iy+MENU_ITEM_H-1, 0x00333333);
+    }
+}
+
+/* Verifica clique no menu e abre o app */
+static void __attribute__((unused)) menu_handle_click(int x, int y) {
+    int ty = TASKBAR_Y(fb.height);
+    int nitems = 0;
+    while (menu_items[nitems].name) nitems++;
+    int mh = nitems * MENU_ITEM_H + 8;
+    int mx = 8, my = ty - mh - 4;
+
+    if (x < mx || x > mx + MENU_W || y < my || y > my + mh) {
+        menu_open = false; return;
+    }
+    int idx = (y - my - 4) / MENU_ITEM_H;
+    if (idx >= 0 && idx < nitems && menu_items[idx].open) {
+        menu_items[idx].open();
+        menu_open = false;
+    }
+}
+
 void desktop_render(void) {
+    /* wm_render() já faz canvas_init + fb_swap internamente,
+     * mas precisamos desenhar o wallpaper ANTES das janelas.
+     * Para isso, desenhamos no backbuffer antes de chamar wm_render. */
+    canvas_init(fb.backbuf, fb.width, fb.height, fb.pitch);
     draw_wallpaper();
     draw_taskbar();
+    if (menu_open) draw_menu();
+    /* wm_render desenha janelas por cima e chama fb_swap */
+    wm_render();
 }
 
 void desktop_init(void) {
@@ -334,14 +401,28 @@ void desktop_run(void) {
         uint32_t now = timer_get_ticks();
         if (now - last_render >= 33) {
             last_render = now;
-            desktop_render();
-            wm_render();
+            desktop_render();   /* inclui wm_render() e fb_swap() internamente */
         }
 
         /* Processa teclas */
         char key = keyboard_getchar();
         if (key) {
-            wm_key_event(key);
+            if (key == '\x1B' || key == 'm') {
+                /* Esc ou 'm': toggle menu */
+                menu_open = !menu_open;
+            } else if (key == '1' && menu_open) {
+                calculator_open(); menu_open = false;
+            } else if (key == '2' && menu_open) {
+                task_manager_open(); menu_open = false;
+            } else if (key == '3' && menu_open) {
+                network_manager_open(); menu_open = false;
+            } else if (key == '4' && menu_open) {
+                settings_open(); menu_open = false;
+            } else if (key == '5' && menu_open) {
+                about_open(); menu_open = false;
+            } else {
+                wm_key_event(key);
+            }
         }
 
         __asm__ volatile ("hlt");

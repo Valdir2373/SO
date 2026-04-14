@@ -27,7 +27,7 @@ CFLAGS := -std=gnu99 -ffreestanding -O2 -Wall -Wextra \
           -fno-exceptions -fno-stack-protector -fno-builtin \
           -fno-pie -fno-pic \
           -nostdlib -nostdinc \
-          -I. -Iinclude -Ilib -Idrivers -Ifs -Imm -Iproc -Inet -Igui -Isecurity
+          -I. -Iinclude -Ilib -Idrivers -Ifs -Imm -Iproc -Inet -Igui -Isecurity -Iapps
 
 ASFLAGS := -f elf32
 
@@ -78,7 +78,12 @@ C_SOURCES   := kernel/kernel.c \
                security/auth.c \
                security/users.c \
                security/permissions.c \
-               security/aslr.c
+               security/aslr.c \
+               apps/calculator.c \
+               apps/task_manager.c \
+               apps/about.c \
+               apps/network_manager.c \
+               apps/settings.c
 
 # Objetos gerados
 ASM_OBJECTS := $(ASM_SOURCES:.asm=.o)
