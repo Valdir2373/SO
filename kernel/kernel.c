@@ -6,6 +6,7 @@
 #include <types.h>
 #include <multiboot.h>
 #include <system.h>
+#include <io.h>
 #include <drivers/vga.h>
 #include <kernel/gdt.h>
 #include <kernel/idt.h>
@@ -20,12 +21,32 @@
 #include <proc/process.h>
 #include <proc/scheduler.h>
 #include <kernel/syscall.h>
+#include <drivers/framebuffer.h>
+#include <gui/desktop.h>
+
+/* ============================================================
+ * Debug via porta serial COM1 (115200 baud)
+ * ============================================================ */
+static void ser_init(void) {
+    outb(0x3F9, 0x00);
+    outb(0x3FB, 0x80);
+    outb(0x3F8, 0x01);  /* 115200 baud */
+    outb(0x3F9, 0x00);
+    outb(0x3FB, 0x03);  /* 8N1 */
+    outb(0x3FA, 0xC7);
+    outb(0x3FC, 0x0B);
+}
+static void ser_putc(char c) { while (!(inb(0x3FD)&0x20)); outb(0x3F8,c); }
+static void ser_puts(const char *s) { while (*s) ser_putc(*s++); }
 
 /* ============================================================
  * kernel_panic — Para tudo e exibe mensagem de erro fatal
  * ============================================================ */
 void kernel_panic(const char *msg) {
     cli();
+    ser_puts("\r\n*** KERNEL PANIC *** ");
+    ser_puts(msg);
+    ser_puts("\r\n");
     vga_set_color(VGA_COLOR_WHITE, VGA_COLOR_RED);
     vga_puts("\n\n *** KERNEL PANIC *** \n ");
     vga_puts(msg);
@@ -113,6 +134,8 @@ static void keyboard_echo_loop(void) {
  * ============================================================ */
 void kernel_main(uint32_t magic, uint32_t mbi_addr) {
     multiboot_info_t *mbi = (multiboot_info_t *)mbi_addr;
+
+    ser_init();  /* COM1 115200 baud — debug via serial */
 
     /* === 1. VGA (primeiro — precisamos ver o que acontece) === */
     vga_init();
@@ -227,10 +250,20 @@ void kernel_main(uint32_t magic, uint32_t mbi_addr) {
     scheduler_enable();
     log_ok("Syscalls via int 0x80 registradas");
 
-    vga_set_color(VGA_COLOR_LIGHT_CYAN, VGA_COLOR_BLACK);
-    vga_puts("\nKrypx Fases 1+2+3+4 completas: Boot+Mem+FS+Proc\n");
-    vga_set_color(VGA_COLOR_YELLOW, VGA_COLOR_BLACK);
-    vga_puts("Proxima fase: Framebuffer VBE, GUI, Window Manager\n");
+    /* === 13. Framebuffer + GUI === */
+    log_info("Inicializando framebuffer VBE...");
+    if (fb_init(mbi)) {
+        log_ok("Framebuffer VBE pronto — iniciando GUI");
+        desktop_init();
+        desktop_run();   /* Loop infinito */
+    } else {
+        vga_set_color(VGA_COLOR_YELLOW, VGA_COLOR_BLACK);
+        vga_puts("[WARN] Sem framebuffer VBE — modo texto\n");
+        vga_set_color(VGA_COLOR_LIGHT_GREY, VGA_COLOR_BLACK);
+        vga_puts("(Rode com ISO via GRUB para ativar o modo grafico)\n");
+    }
 
+    vga_set_color(VGA_COLOR_LIGHT_CYAN, VGA_COLOR_BLACK);
+    vga_puts("\nKrypx todas as fases completas!\n");
     keyboard_echo_loop();
 }

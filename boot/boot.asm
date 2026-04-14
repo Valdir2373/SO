@@ -8,7 +8,7 @@ bits 32
 ; Constantes Multiboot
 ; ============================================================
 MBOOT_MAGIC     equ 0x1BADB002
-MBOOT_FLAGS     equ 0x00000003   ; bit 0 = alinhar módulos, bit 1 = fornecer mapa de memória
+MBOOT_FLAGS     equ 0x00000007   ; bit 0 = alinhar módulos, bit 1 = mapa de memória, bit 2 = modo vídeo
 MBOOT_CHECKSUM  equ -(MBOOT_MAGIC + MBOOT_FLAGS)
 
 ; ============================================================
@@ -19,6 +19,17 @@ align 4
     dd MBOOT_MAGIC
     dd MBOOT_FLAGS
     dd MBOOT_CHECKSUM
+    ; Campos de endereço (só usados se bit 16 estiver set — colocamos 0s)
+    dd 0            ; header_addr  (não usado — kernel ELF)
+    dd 0            ; load_addr
+    dd 0            ; load_end_addr
+    dd 0            ; bss_end_addr
+    dd 0            ; entry_addr
+    ; Campos de modo de vídeo (usados porque bit 2 está set)
+    dd 0            ; mode_type: 0 = framebuffer linear RGB
+    dd 1024         ; largura preferida
+    dd 768          ; altura preferida
+    dd 32           ; bits por pixel preferido
 
 ; ============================================================
 ; BSS — stack do kernel (16 KB)

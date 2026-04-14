@@ -41,11 +41,16 @@ process_t *process_create_kernel(void) {
     if (!p) return 0;
 
     memset(p, 0, sizeof(process_t));
-    p->pid      = next_pid++;
-    p->state    = PROC_RUNNING;
-    p->priority = 0;
+    p->pid        = next_pid++;
+    p->state      = PROC_RUNNING;
+    p->priority   = 0;
     strcpy(p->name, "kernel");
-    p->page_dir = vmm_get_current_dir();
+    p->page_dir   = vmm_get_current_dir();
+
+    /* Inicializa contexto com CR3 e EFLAGS válidos.
+     * ESP e EIP serão salvos na primeira chamada do context_switch. */
+    p->ctx.cr3    = (uint32_t)vmm_get_current_dir();
+    p->ctx.eflags = 0x202;  /* IF=1 */
 
     current_process = p;
     return p;

@@ -57,7 +57,11 @@ C_SOURCES   := kernel/kernel.c \
                fs/fat32.c \
                proc/process.c \
                proc/scheduler.c \
-               kernel/syscall.c
+               kernel/syscall.c \
+               drivers/framebuffer.c \
+               gui/canvas.c \
+               gui/window.c \
+               gui/desktop.c
 
 # Objetos gerados
 ASM_OBJECTS := $(ASM_SOURCES:.asm=.o)

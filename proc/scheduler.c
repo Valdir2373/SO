@@ -33,14 +33,21 @@ void scheduler_init(void) {
 
 void scheduler_add(process_t *proc) {
     if (!proc) return;
-    proc->state = PROC_READY;
 
     if (!run_queue) {
         run_queue  = proc;
-        proc->next = proc;   /* Fila circular */
+        proc->next = proc;   /* Fila circular com um elemento */
+        if (!current) {
+            /* Primeiro processo — já está rodando, não troca contexto */
+            current     = proc;
+            proc->state = PROC_RUNNING;
+        } else {
+            proc->state = PROC_READY;
+        }
         return;
     }
 
+    proc->state = PROC_READY;
     /* Insere após a cabeça */
     process_t *last = run_queue;
     while (last->next != run_queue) last = last->next;
@@ -97,11 +104,15 @@ void schedule(void) {
     /* Atualiza ESP0 do TSS para a kernel stack do novo processo */
     tss_set_kernel_stack(current->kernel_stack);
 
-    /* Troca page directory */
-    if (current->ctx.cr3 != prev->ctx.cr3) {
-        vmm_switch_address_space((uint32_t *)current->ctx.cr3);
+    /* Troca page directory (só se realmente diferente e válido) */
+    uint32_t new_cr3 = current->ctx.cr3;
+    uint32_t old_cr3 = prev ? prev->ctx.cr3 : 0;
+    if (new_cr3 && new_cr3 != old_cr3) {
+        vmm_switch_address_space((uint32_t *)new_cr3);
     }
 
     /* Context switch: salva prev, carrega next */
-    context_switch(&prev->ctx, &current->ctx);
+    if (prev) {
+        context_switch(&prev->ctx, &current->ctx);
+    }
 }
