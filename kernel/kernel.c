@@ -17,6 +17,9 @@
 #include <drivers/ide.h>
 #include <fs/vfs.h>
 #include <fs/fat32.h>
+#include <proc/process.h>
+#include <proc/scheduler.h>
+#include <kernel/syscall.h>
 
 /* ============================================================
  * kernel_panic — Para tudo e exibe mensagem de erro fatal
@@ -210,11 +213,24 @@ void kernel_main(uint32_t magic, uint32_t mbi_addr) {
         vfs_init();
     }
 
-    vga_set_color(VGA_COLOR_LIGHT_CYAN, VGA_COLOR_BLACK);
-    vga_puts("\nKrypx Fases 1+2+3 completas: Boot+Mem+FS\n");
-    vga_set_color(VGA_COLOR_YELLOW, VGA_COLOR_BLACK);
-    vga_puts("Proxima fase: processos, scheduler, ELF loader\n");
+    /* === 12. Processos + Scheduler + Syscalls === */
+    log_info("Inicializando processos e scheduler...");
+    process_init();
+    scheduler_init();
+    syscall_init();
+    process_t *kproc = process_create_kernel();
+    (void)kproc;
+    log_ok("Processos inicializados. Scheduler Round-Robin pronto");
 
-    /* Loop interativo */
+    /* Adiciona o processo kernel à fila */
+    scheduler_add(process_current());
+    scheduler_enable();
+    log_ok("Syscalls via int 0x80 registradas");
+
+    vga_set_color(VGA_COLOR_LIGHT_CYAN, VGA_COLOR_BLACK);
+    vga_puts("\nKrypx Fases 1+2+3+4 completas: Boot+Mem+FS+Proc\n");
+    vga_set_color(VGA_COLOR_YELLOW, VGA_COLOR_BLACK);
+    vga_puts("Proxima fase: Framebuffer VBE, GUI, Window Manager\n");
+
     keyboard_echo_loop();
 }

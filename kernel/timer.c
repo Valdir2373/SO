@@ -9,6 +9,9 @@
 #include <types.h>
 #include <io.h>
 
+/* Forward declaration — evita dependência circular no header */
+extern void schedule(void);
+
 /* Portas do PIT */
 #define PIT_CHANNEL0  0x40   /* Canal 0 — ligado ao IRQ0 */
 #define PIT_CMD       0x43   /* Registrador de comando */
@@ -23,8 +26,8 @@ static volatile uint32_t ticks = 0;
 static void timer_handler(registers_t *regs) {
     (void)regs;
     ticks++;
-    /* Futuro: chamar o scheduler aqui */
     pic_send_eoi(32);
+    schedule();   /* Preempção Round-Robin */
 }
 
 void timer_init(void) {

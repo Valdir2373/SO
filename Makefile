@@ -39,7 +39,8 @@ LDFLAGS := -T linker.ld -nostdlib
 ASM_SOURCES := boot/boot.asm \
                boot/gdt.asm \
                boot/idt.asm \
-               boot/isr.asm
+               boot/isr.asm \
+               boot/switch.asm
 
 C_SOURCES   := kernel/kernel.c \
                kernel/gdt.c \
@@ -53,7 +54,10 @@ C_SOURCES   := kernel/kernel.c \
                mm/heap.c \
                lib/string.c \
                fs/vfs.c \
-               fs/fat32.c
+               fs/fat32.c \
+               proc/process.c \
+               proc/scheduler.c \
+               kernel/syscall.c
 
 # Objetos gerados
 ASM_OBJECTS := $(ASM_SOURCES:.asm=.o)
