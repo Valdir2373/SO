@@ -47,9 +47,13 @@ C_SOURCES   := kernel/kernel.c \
                kernel/timer.c \
                drivers/vga.c \
                drivers/keyboard.c \
+               drivers/ide.c \
                mm/pmm.c \
                mm/vmm.c \
-               mm/heap.c
+               mm/heap.c \
+               lib/string.c \
+               fs/vfs.c \
+               fs/fat32.c
 
 # Objetos gerados
 ASM_OBJECTS := $(ASM_SOURCES:.asm=.o)

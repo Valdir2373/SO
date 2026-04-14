@@ -14,6 +14,9 @@
 #include <mm/pmm.h>
 #include <mm/vmm.h>
 #include <mm/heap.h>
+#include <drivers/ide.h>
+#include <fs/vfs.h>
+#include <fs/fat32.h>
 
 /* ============================================================
  * kernel_panic — Para tudo e exibe mensagem de erro fatal
@@ -179,10 +182,38 @@ void kernel_main(uint32_t magic, uint32_t mbi_addr) {
     /* === Informações === */
     print_meminfo(mbi);
 
+    /* === 11. IDE + VFS + FAT32 === */
+    log_info("Inicializando driver IDE/ATA...");
+    ide_init();
+    if (ide_disk_present()) {
+        vga_set_color(VGA_COLOR_GREEN, VGA_COLOR_BLACK);
+        vga_puts("[OK] Disco IDE detectado: ");
+        vga_put_dec(ide_get_sector_count() / 2048);
+        vga_puts(" MB\n");
+        vga_set_color(VGA_COLOR_LIGHT_GREY, VGA_COLOR_BLACK);
+
+        log_info("Montando FAT32...");
+        vfs_init();
+        if (fat32_init(0)) {
+            vfs_mount_root(fat32_get_root());
+            log_ok("FAT32 montado em /");
+        } else {
+            vga_set_color(VGA_COLOR_YELLOW, VGA_COLOR_BLACK);
+            vga_puts("[WARN] FAT32 nao encontrado (disco sem particao FAT32)\n");
+            vga_set_color(VGA_COLOR_LIGHT_GREY, VGA_COLOR_BLACK);
+            vfs_init();
+        }
+    } else {
+        vga_set_color(VGA_COLOR_YELLOW, VGA_COLOR_BLACK);
+        vga_puts("[WARN] Sem disco IDE (rodando em QEMU sem -drive)\n");
+        vga_set_color(VGA_COLOR_LIGHT_GREY, VGA_COLOR_BLACK);
+        vfs_init();
+    }
+
     vga_set_color(VGA_COLOR_LIGHT_CYAN, VGA_COLOR_BLACK);
-    vga_puts("\nKrypx Fases 1+2 completas: VGA+GDT+IDT+PIT+KB+PMM+VMM+Heap\n");
+    vga_puts("\nKrypx Fases 1+2+3 completas: Boot+Mem+FS\n");
     vga_set_color(VGA_COLOR_YELLOW, VGA_COLOR_BLACK);
-    vga_puts("Proxima fase: FAT32, VFS, processos, scheduler\n");
+    vga_puts("Proxima fase: processos, scheduler, ELF loader\n");
 
     /* Loop interativo */
     keyboard_echo_loop();
