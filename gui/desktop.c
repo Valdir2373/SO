@@ -9,6 +9,7 @@
 #include <drivers/framebuffer.h>
 #include <drivers/keyboard.h>
 #include <kernel/timer.h>
+#include <security/users.h>
 #include <lib/string.h>
 #include <types.h>
 
@@ -175,9 +176,14 @@ static void draw_taskbar(void) {
     canvas_draw_string(fb.width - 80, ty + 12, clock,
                        0x00DFE6E9, COLOR_TRANSPARENT);
 
-    /* Indicador de memória livre */
-    canvas_draw_string(fb.width - 200, ty + 12, "Krypx v0.1",
-                       0x00636E72, COLOR_TRANSPARENT);
+    /* Usuário logado */
+    if (current_user) {
+        canvas_draw_string(fb.width - 200, ty + 12, current_user->username,
+                           0x0074B9FF, COLOR_TRANSPARENT);
+    } else {
+        canvas_draw_string(fb.width - 200, ty + 12, "Krypx v0.1",
+                           0x00636E72, COLOR_TRANSPARENT);
+    }
 }
 
 void desktop_render(void) {
@@ -213,7 +219,114 @@ void desktop_init(void) {
     }
 }
 
+/* ============================================================
+ * Tela de login
+ * ============================================================ */
+static void draw_login_screen(const char *username, uint32_t ulen,
+                               const char *pass_mask, uint32_t plen,
+                               bool field_user, bool error)
+{
+    /* Inicializa canvas com o backbuffer */
+    canvas_init(fb.backbuf, fb.width, fb.height, fb.pitch);
+
+    /* Fundo escuro com gradiente */
+    canvas_fill_rect(0, 0, fb.width, fb.height, 0x000C2461);
+
+    /* Logo do sistema */
+    int cx = (int)fb.width / 2;
+    canvas_draw_string((uint32_t)(cx - 60), 80, "Krypx OS", 0x0074B9FF, COLOR_TRANSPARENT);
+    canvas_draw_string((uint32_t)(cx - 80), 110, "Sistema Seguro — Ring 0/3", 0x00636E72, COLOR_TRANSPARENT);
+
+    /* Caixa de login */
+    int bx = cx - 160;
+    int by = (int)fb.height / 2 - 100;
+    canvas_fill_rounded_rect((uint32_t)bx, (uint32_t)by, 320, 200, 8, 0x001E272E);
+    canvas_draw_rounded_rect((uint32_t)bx, (uint32_t)by, 320, 200, 8, 0x00636E72);
+
+    canvas_draw_string((uint32_t)(bx + 10), (uint32_t)(by + 12), "Login — Krypx", 0x00DFE6E9, COLOR_TRANSPARENT);
+
+    /* Campo usuário */
+    uint32_t ub_col = field_user ? 0x0074B9FF : 0x00636E72;
+    canvas_fill_rounded_rect((uint32_t)(bx+10), (uint32_t)(by+40), 300, 30, 4, 0x00141E26);
+    canvas_draw_rounded_rect((uint32_t)(bx+10), (uint32_t)(by+40), 300, 30, 4, ub_col);
+    canvas_draw_string((uint32_t)(bx+16), (uint32_t)(by+48), "Usuario: ", 0x00636E72, COLOR_TRANSPARENT);
+    canvas_draw_string((uint32_t)(bx+90), (uint32_t)(by+48), username, 0x00DFE6E9, COLOR_TRANSPARENT);
+    if (field_user && (timer_get_ticks() % 60 < 30))
+        canvas_fill_rect((uint32_t)(bx+90+(int)ulen*8), (uint32_t)(by+48), 2, 14, 0x0074B9FF);
+
+    /* Campo senha */
+    uint32_t pb_col = !field_user ? 0x0074B9FF : 0x00636E72;
+    canvas_fill_rounded_rect((uint32_t)(bx+10), (uint32_t)(by+84), 300, 30, 4, 0x00141E26);
+    canvas_draw_rounded_rect((uint32_t)(bx+10), (uint32_t)(by+84), 300, 30, 4, pb_col);
+    canvas_draw_string((uint32_t)(bx+16), (uint32_t)(by+92), "Senha:   ", 0x00636E72, COLOR_TRANSPARENT);
+    canvas_draw_string((uint32_t)(bx+90), (uint32_t)(by+92), pass_mask, 0x00DFE6E9, COLOR_TRANSPARENT);
+    if (!field_user && (timer_get_ticks() % 60 < 30))
+        canvas_fill_rect((uint32_t)(bx+90+(int)plen*8), (uint32_t)(by+92), 2, 14, 0x0074B9FF);
+
+    /* Botão Entrar */
+    canvas_fill_rounded_rect((uint32_t)(bx+90), (uint32_t)(by+130), 140, 32, 6, 0x000984E3);
+    canvas_draw_string((uint32_t)(bx+126), (uint32_t)(by+142), "Entrar (Enter)", 0x00FFFFFF, COLOR_TRANSPARENT);
+
+    /* Mensagem de erro */
+    if (error) {
+        canvas_draw_string((uint32_t)(bx+10), (uint32_t)(by+174), "Credenciais invalidas!", 0x00D63031, COLOR_TRANSPARENT);
+    }
+
+    canvas_draw_string((uint32_t)(cx - 120), (uint32_t)(by + 215),
+                       "Tab: trocar campo  |  Enter: confirmar",
+                       0x00636E72, COLOR_TRANSPARENT);
+
+    fb_swap();
+}
+
+static void login_screen(void) {
+    char username[USERNAME_MAX]; uint32_t ulen = 0;
+    char password[64];            uint32_t plen = 0;
+    char pass_mask[64];           pass_mask[0] = '\0';
+    bool field_user = true;
+    bool error      = false;
+
+    memset(username, 0, sizeof(username));
+    memset(password, 0, sizeof(password));
+
+    while (1) {
+        draw_login_screen(username, ulen, pass_mask, plen, field_user, error);
+
+        char c = keyboard_getchar();
+        if (!c) { __asm__ volatile("hlt"); continue; }
+
+        if (c == '\t') {
+            field_user = !field_user;
+            error = false;
+        } else if (c == '\n') {
+            /* Tenta autenticar */
+            if (user_authenticate(username, password) == 0) return; /* sucesso */
+            error = true;
+            plen = 0; password[0] = '\0'; pass_mask[0] = '\0';
+        } else if (c == '\b') {
+            if (field_user) {
+                if (ulen > 0) { ulen--; username[ulen] = '\0'; }
+            } else {
+                if (plen > 0) { plen--; password[plen] = '\0'; pass_mask[plen] = '\0'; }
+            }
+            error = false;
+        } else if (c >= 0x20 && c < 0x7F) {
+            if (field_user && ulen < USERNAME_MAX - 1) {
+                username[ulen++] = c; username[ulen] = '\0';
+            } else if (!field_user && plen < 63) {
+                password[plen]   = c; plen++;
+                password[plen]   = '\0';
+                pass_mask[plen-1] = '*'; pass_mask[plen] = '\0';
+            }
+            error = false;
+        }
+    }
+}
+
 void desktop_run(void) {
+    /* Tela de login antes do desktop */
+    login_screen();
+
     uint32_t last_render = 0;
 
     while (1) {

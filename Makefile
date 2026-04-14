@@ -74,7 +74,11 @@ C_SOURCES   := kernel/kernel.c \
                net/dhcp.c \
                net/dns.c \
                net/socket.c \
-               net/netif.c
+               net/netif.c \
+               security/auth.c \
+               security/users.c \
+               security/permissions.c \
+               security/aslr.c
 
 # Objetos gerados
 ASM_OBJECTS := $(ASM_SOURCES:.asm=.o)

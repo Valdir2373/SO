@@ -25,6 +25,8 @@
 #include <drivers/pci.h>
 #include <gui/desktop.h>
 #include <net/netif.h>
+#include <security/users.h>
+#include <security/aslr.h>
 
 /* ============================================================
  * Debug via porta serial COM1 (115200 baud)
@@ -268,7 +270,14 @@ void kernel_main(uint32_t magic, uint32_t mbi_addr) {
         ser_puts("[NET] Sem rede\r\n");
     }
 
-    /* === 14. Framebuffer + GUI === */
+    /* === 14. Segurança: usuários + ASLR === */
+    log_info("Inicializando subsistema de segurança...");
+    aslr_init(timer_get_ticks());
+    users_init();
+    log_ok("Segurança: ASLR ativo, usuario root criado (senha: krypx)");
+    ser_puts("[SEC] Seguranca inicializada\r\n");
+
+    /* === 15. Framebuffer + GUI === */
     log_info("Inicializando framebuffer VBE...");
     if (fb_init(mbi)) {
         log_ok("Framebuffer VBE pronto — iniciando GUI");
