@@ -27,6 +27,61 @@ static vfs_node_t fat32_root_node;
 
 /* ---- Helpers ---- */
 
+/*
+ * Entrada LFN (Long File Name) do FAT32 — atributo 0x0F.
+ * Armazena até 13 caracteres UTF-16LE por entrada.
+ * As entradas aparecem em ordem reversa antes da entrada 8.3 correspondente.
+ */
+typedef struct {
+    uint8_t  seq;         /* Seq | 0x40 se última parte; seq 1-indexed */
+    uint16_t name1[5];    /* Chars 1-5 em UTF-16LE */
+    uint8_t  attr;        /* 0x0F */
+    uint8_t  type;
+    uint8_t  checksum;
+    uint16_t name2[6];    /* Chars 6-11 em UTF-16LE */
+    uint16_t cluster;     /* Sempre 0 */
+    uint16_t name3[2];    /* Chars 12-13 em UTF-16LE */
+} __attribute__((packed)) fat32_lfn_t;
+
+/* Comparação de strings ignorando maiúsculas/minúsculas (ASCII) */
+static int fat32_stricmp(const char *a, const char *b) {
+    while (*a && *b) {
+        char ca = *a, cb = *b;
+        if (ca >= 'A' && ca <= 'Z') ca += 32;
+        if (cb >= 'A' && cb <= 'Z') cb += 32;
+        if (ca != cb) return (int)(uint8_t)ca - (int)(uint8_t)cb;
+        a++; b++;
+    }
+    return (int)(uint8_t)*a - (int)(uint8_t)*b;
+}
+
+/*
+ * Extrai até 13 chars da entrada LFN para lfn_buf na posição (seq-1)*13.
+ * Para quando encontra 0x0000 (fim) ou 0xFFFF (preenchimento).
+ * lfn_buf deve ter pelo menos 256 bytes e estar zerado.
+ */
+static void fat32_extract_lfn(fat32_lfn_t *lfn, char *lfn_buf) {
+    uint8_t seq = lfn->seq & 0x1F;
+    if (seq == 0 || seq > 20) return;
+
+    int base = (seq - 1) * 13;
+    uint16_t chars[13];
+    int j;
+
+    for (j = 0; j < 5;  j++) chars[j]    = lfn->name1[j];
+    for (j = 0; j < 6;  j++) chars[5+j]  = lfn->name2[j];
+    for (j = 0; j < 2;  j++) chars[11+j] = lfn->name3[j];
+
+    for (j = 0; j < 13; j++) {
+        uint16_t c = chars[j];
+        if (c == 0x0000 || c == 0xFFFF) {
+            if (base + j < 255) lfn_buf[base + j] = 0;
+            return;
+        }
+        if (base + j < 255) lfn_buf[base + j] = (char)(c & 0x7F);
+    }
+}
+
 /* Lê o próximo cluster da FAT */
 static uint32_t fat32_next_cluster(uint32_t cluster) {
     uint32_t fat_offset  = cluster * 4;
@@ -155,12 +210,20 @@ done:
 }
 
 static vfs_node_t *fat32_vfs_finddir(vfs_node_t *node, const char *name) {
-    uint32_t  cluster   = node->impl;
+    uint32_t  cluster    = node->impl;
     uint32_t  bytes_clus = fat32.bytes_per_clus;
     uint8_t  *clus_buf   = (uint8_t *)kmalloc(bytes_clus);
     if (!clus_buf) return 0;
 
     vfs_node_t *result = 0;
+
+    /*
+     * lfn_buf acumula o nome longo (LFN) da entrada atual.
+     * Entradas LFN aparecem em ordem REVERSA antes da entrada 8.3.
+     * Cada entrada LFN carrega 13 chars na posição (seq-1)*13.
+     */
+    char lfn_buf[256];
+    memset(lfn_buf, 0, sizeof(lfn_buf));
 
     while (cluster < 0x0FFFFFF8) {
         if (!fat32_read_cluster(cluster, clus_buf)) break;
@@ -172,23 +235,53 @@ static vfs_node_t *fat32_vfs_finddir(vfs_node_t *node, const char *name) {
         for (i = 0; i < n_entries; i++) {
             fat32_dirent_t *e = &entries[i];
 
-            if (e->name[0] == 0x00) goto done;
-            if (e->name[0] == 0xE5) continue;
-            if (e->attr == FAT_ATTR_LFN) continue;
-            if (e->attr & FAT_ATTR_VOLUME_ID) continue;
+            if (e->name[0] == 0x00) goto done;          /* Fim do diretório */
+            if (e->name[0] == 0xE5) {                    /* Entrada deletada */
+                memset(lfn_buf, 0, sizeof(lfn_buf));
+                continue;
+            }
 
+            if (e->attr == FAT_ATTR_LFN) {
+                /* Acumula fragmento LFN */
+                fat32_extract_lfn((fat32_lfn_t *)e, lfn_buf);
+                continue;
+            }
+
+            if (e->attr & FAT_ATTR_VOLUME_ID) {
+                memset(lfn_buf, 0, sizeof(lfn_buf));
+                continue;
+            }
+
+            /* Entrada 8.3 — tenta bater contra LFN (se houver) ou nome curto */
             char fname[16];
             fat32_83_to_name(e->name, e->ext, fname);
 
-            if (strcmp(fname, name) == 0) {
+            bool match = false;
+            if (lfn_buf[0] != 0 && fat32_stricmp(lfn_buf, name) == 0) match = true;
+            if (!match && fat32_stricmp(fname, name) == 0)             match = true;
+
+            /* Guarda nome para o nó antes de resetar o buffer */
+            char display_name[256];
+            if (lfn_buf[0] != 0) {
+                int dn = 0;
+                while (lfn_buf[dn] && dn < 255) { display_name[dn] = lfn_buf[dn]; dn++; }
+                display_name[dn] = 0;
+            } else {
+                int dn = 0;
+                while (fname[dn] && dn < 15) { display_name[dn] = fname[dn]; dn++; }
+                display_name[dn] = 0;
+            }
+            memset(lfn_buf, 0, sizeof(lfn_buf));   /* Reset para próxima entrada */
+
+            if (match) {
                 result = (vfs_node_t *)kmalloc(sizeof(vfs_node_t));
                 if (result) {
                     memset(result, 0, sizeof(vfs_node_t));
-                    strcpy(result->name, fname);
-                    result->size  = e->file_size;
-                    result->impl  = ((uint32_t)e->cluster_hi << 16) | e->cluster_lo;
-                    result->flags = (e->attr & FAT_ATTR_DIRECTORY) ?
-                                    VFS_DIRECTORY : VFS_FILE;
+                    strcpy(result->name, display_name);
+                    result->size    = e->file_size;
+                    result->impl    = ((uint32_t)e->cluster_hi << 16) | e->cluster_lo;
+                    result->flags   = (e->attr & FAT_ATTR_DIRECTORY) ?
+                                      VFS_DIRECTORY : VFS_FILE;
                     result->read    = fat32_vfs_read;
                     result->readdir = fat32_vfs_readdir;
                     result->finddir = fat32_vfs_finddir;
