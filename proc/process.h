@@ -23,6 +23,11 @@ typedef enum {
     PROC_UNUSED  = 4,
 } proc_state_t;
 
+/* Modo de compatibilidade binária */
+#define COMPAT_NONE    0   /* ELF nativo Krypx */
+#define COMPAT_LINUX   1   /* ELF Linux i386 — syscalls traduzidas */
+#define COMPAT_WINDOWS 2   /* PE Windows  — em desenvolvimento */
+
 /* Contexto de registradores salvo no context switch */
 typedef struct {
     uint32_t eax, ebx, ecx, edx;
@@ -53,6 +58,7 @@ typedef struct process {
 
     uint32_t      uid;
     int32_t       exit_code;
+    uint8_t       compat_mode;  /* COMPAT_NONE / COMPAT_LINUX / COMPAT_WINDOWS */
 
     /* RAM alocada para este processo (apps GUI) */
     void         *mem_block;    /* kmalloc'd — NULL para kernel */

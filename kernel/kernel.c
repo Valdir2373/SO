@@ -28,6 +28,10 @@
 #include <net/netif.h>
 #include <security/users.h>
 #include <security/aslr.h>
+#include <compat/detect.h>
+#include <compat/linux_compat.h>
+#include <compat/win_compat.h>
+#include <proc/elf.h>
 
 /* ============================================================
  * Debug via porta serial COM1 (115200 baud)
@@ -132,6 +136,109 @@ static void keyboard_echo_loop(void) {
         }
         __asm__ volatile ("hlt");
     }
+}
+
+/* ============================================================
+ * compat_try_run — Carrega e executa binário do disco via compat layer
+ * Detecta o tipo (ELF Linux / PE Windows), carrega no processo e
+ * adiciona ao scheduler. O processo receberá fatias de CPU pelo timer.
+ * ============================================================ */
+static void compat_try_run(const char *path) {
+    vfs_node_t *node = vfs_resolve(path);
+    if (!node) return;
+
+    vga_set_color(VGA_COLOR_CYAN, VGA_COLOR_BLACK);
+    vga_puts("[COMPAT] Binario encontrado: ");
+    vga_puts(path);
+    vga_puts(" (");
+    vga_put_dec(node->size);
+    vga_puts(" bytes)\n");
+    vga_set_color(VGA_COLOR_LIGHT_GREY, VGA_COLOR_BLACK);
+
+    /* Lê o arquivo inteiro para o heap do kernel */
+    uint8_t *buf = (uint8_t *)kmalloc(node->size);
+    if (!buf) {
+        vga_puts("[COMPAT] ERRO: kmalloc falhou\n");
+        return;
+    }
+    vfs_read(node, 0, node->size, buf);
+
+    /* Detecta o tipo de executável */
+    binary_type_t btype = detect_binary_type(buf, node->size);
+    vga_set_color(VGA_COLOR_CYAN, VGA_COLOR_BLACK);
+    vga_puts("[COMPAT] Tipo detectado: ");
+    vga_puts(binary_type_name(btype));
+    vga_puts("\n");
+    vga_set_color(VGA_COLOR_LIGHT_GREY, VGA_COLOR_BLACK);
+
+    if (btype == BINARY_WINDOWS_PE) {
+        win_compat_load(buf, node->size);
+        kfree(buf);
+        return;
+    }
+
+    if (btype != BINARY_LINUX_ELF && btype != BINARY_KRYPX_ELF) {
+        vga_puts("[COMPAT] Formato nao suportado.\n");
+        kfree(buf);
+        return;
+    }
+
+    /* Extrai nome do arquivo (remove o prefixo "/") */
+    const char *pname = path;
+    {
+        const char *tmp = path;
+        while (*tmp) { if (*tmp == '/') pname = tmp + 1; tmp++; }
+    }
+
+    /* Cria processo e carrega o ELF */
+    process_t *proc = process_create(pname, 0, 2);
+    if (!proc) {
+        vga_puts("[COMPAT] ERRO: nao foi possivel criar processo\n");
+        kfree(buf);
+        return;
+    }
+
+    elf_load_result_t res;
+    if (elf_load(proc, buf, node->size, &res) != 0) {
+        vga_puts("[COMPAT] ERRO: falha ao carregar ELF\n");
+        kfree(buf);
+        return;
+    }
+    kfree(buf);  /* ELF já foi copiado para o espaço do processo */
+
+    /* Configura contexto de execução */
+    proc->ctx.eip    = res.entry_point;
+    proc->ctx.esp    = res.user_stack_top;
+    proc->ctx.eflags = 0x202;  /* IF=1 */
+    proc->heap_start = res.heap_base;
+    proc->heap_end   = res.heap_base;
+
+    if (btype == BINARY_LINUX_ELF)
+        proc->compat_mode = COMPAT_LINUX;
+
+    /* Adiciona ao scheduler */
+    scheduler_add(proc);
+
+    vga_set_color(VGA_COLOR_GREEN, VGA_COLOR_BLACK);
+    vga_puts("[COMPAT] Processo '");
+    vga_puts(pname);
+    vga_puts("' iniciado (PID ");
+    vga_put_dec(proc->pid);
+    vga_puts(", entry=0x");
+    {
+        /* Exibe entry point em hex */
+        uint32_t v = res.entry_point;
+        char hex[9]; int hi;
+        hex[8] = '\0';
+        for (hi = 7; hi >= 0; hi--) {
+            uint8_t nibble = (uint8_t)(v & 0xF);
+            hex[hi] = nibble < 10 ? '0' + nibble : 'A' + nibble - 10;
+            v >>= 4;
+        }
+        vga_puts(hex);
+    }
+    vga_puts(")\n");
+    vga_set_color(VGA_COLOR_LIGHT_GREY, VGA_COLOR_BLACK);
 }
 
 /* ============================================================
@@ -259,6 +366,34 @@ void kernel_main(uint32_t magic, uint32_t mbi_addr) {
     scheduler_add(process_current());
     scheduler_enable();
     log_ok("Syscalls via int 0x80 registradas");
+
+    /* === 12b. Camada de compatibilidade binária === */
+    linux_compat_init();
+    win_compat_init();
+    vga_set_color(VGA_COLOR_GREEN, VGA_COLOR_BLACK);
+    vga_puts("[OK] Compat: Linux ELF i386 ativo | Windows PE (em breve)\n");
+    vga_set_color(VGA_COLOR_LIGHT_GREY, VGA_COLOR_BLACK);
+
+    /*
+     * Tenta carregar e executar binários do disco (FAT32 já montado no passo 11).
+     * O processo entra no scheduler e recebe fatias de CPU a cada tick do timer.
+     * O delay de 300 ms garante que ele execute e produza saída no VGA texto
+     * ANTES de a GUI iniciar e sobrescrever a tela.
+     */
+    compat_try_run("/test_linux");
+    if (process_get(1) || process_get(2)) {
+        /* Há processo compat no scheduler — dá tempo para rodar */
+        vga_set_color(VGA_COLOR_YELLOW, VGA_COLOR_BLACK);
+        vga_puts("[COMPAT] Aguardando saida do processo Linux...\n");
+        vga_set_color(VGA_COLOR_LIGHT_GREY, VGA_COLOR_BLACK);
+        uint32_t t0 = timer_get_ticks();
+        while (timer_get_ticks() - t0 < 400) {
+            __asm__ volatile ("hlt");   /* Cede CPU; timer IRQ → schedule() */
+        }
+        vga_set_color(VGA_COLOR_GREEN, VGA_COLOR_BLACK);
+        vga_puts("[COMPAT] Processo Linux concluido.\n");
+        vga_set_color(VGA_COLOR_LIGHT_GREY, VGA_COLOR_BLACK);
+    }
 
     /* === 13. Rede (PCI + e1000 + TCP/IP + DHCP) === */
     log_info("Inicializando pilha de rede...");

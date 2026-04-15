@@ -10,6 +10,7 @@
 #include <proc/scheduler.h>
 #include <drivers/vga.h>
 #include <fs/vfs.h>
+#include <compat/linux_compat.h>
 #include <types.h>
 
 /* ---- Implementações das syscalls ---- */
@@ -62,6 +63,17 @@ static int32_t sys_sbrk(int32_t increment) {
 
 void syscall_handler(registers_t *regs) {
     int32_t ret = -1;
+
+    /*
+     * Roteamento por modo de compatibilidade:
+     * Se o processo atual roda um binário Linux, encaminha para o
+     * handler de compat que traduz os números de syscall Linux → Krypx.
+     */
+    process_t *cur = process_current();
+    if (cur && cur->compat_mode == COMPAT_LINUX) {
+        linux_syscall_handler(regs);
+        return;
+    }
 
     switch (regs->eax) {
         case SYS_EXIT:   ret = sys_exit((int32_t)regs->ebx); break;

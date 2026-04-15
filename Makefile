@@ -27,7 +27,7 @@ CFLAGS := -std=gnu99 -ffreestanding -O2 -Wall -Wextra \
           -fno-exceptions -fno-stack-protector -fno-builtin \
           -fno-pie -fno-pic \
           -nostdlib -nostdinc \
-          -I. -Iinclude -Ilib -Idrivers -Ifs -Imm -Iproc -Inet -Igui -Isecurity -Iapps
+          -I. -Iinclude -Ilib -Idrivers -Ifs -Imm -Iproc -Inet -Igui -Isecurity -Iapps -Icompat
 
 ASFLAGS := -f elf32
 
@@ -42,7 +42,11 @@ ASM_SOURCES := boot/boot.asm \
                boot/isr.asm \
                boot/switch.asm
 
-C_SOURCES   := kernel/kernel.c \
+C_SOURCES   := compat/detect.c \
+               compat/linux_compat.c \
+               compat/win_compat.c \
+               proc/elf.c \
+               kernel/kernel.c \
                kernel/gdt.c \
                kernel/idt.c \
                kernel/timer.c \
@@ -165,9 +169,49 @@ run-kernel: kernel.bin
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 # ============================================================
+# Binário de teste Linux (para o ambiente de compatibilidade)
+# ============================================================
+
+# Compila o programa de teste Linux (precisa de gcc -m32 e libc 32-bit)
+test-linux-binary:
+	@echo "[CC]  tools/test_linux (Linux i386 static, no libc)"
+	gcc -m32 -static -nostdlib -nostartfiles \
+	    -fno-pie -fno-pic -Os \
+	    -e _start \
+	    -o tools/test_linux tools/test_linux.c
+	strip tools/test_linux
+	@echo "[OK]  tools/test_linux gerado ($$(stat -c%s tools/test_linux) bytes)"
+
+# Cria disk.img FAT32 e instala o binário de teste
+disk.img:
+	@echo "[DISK] Criando disk.img (64 MB, FAT32)..."
+	dd if=/dev/zero of=disk.img bs=1M count=64 status=none
+	mkdosfs -F32 disk.img
+	@echo "[OK]  disk.img criado"
+
+install-test: test-linux-binary disk.img
+	@echo "[DISK] Instalando test_linux no disco (via mtools)..."
+	mcopy -i disk.img -o tools/test_linux ::test_linux
+	@echo "[OK]  /test_linux instalado no disk.img"
+
+# Roda com disco (para testar o compat layer)
+run-compat: iso disk.img
+	$(QEMU) -cdrom Krypx.iso -m 256M \
+	    -vga std \
+	    -boot d \
+	    -serial stdio \
+	    -drive file=disk.img,format=raw,if=ide \
+	    -no-reboot \
+	    -no-shutdown
+
+# ============================================================
 # Limpeza
 # ============================================================
 clean:
 	rm -f $(ALL_OBJECTS) kernel.bin Krypx.iso
 	rm -f iso/boot/kernel.bin
 	@echo "[CLEAN] Feito"
+
+clean-all: clean
+	rm -f tools/test_linux disk.img
+	@echo "[CLEAN] Tudo limpo"

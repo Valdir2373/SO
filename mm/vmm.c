@@ -99,7 +99,16 @@ uint32_t *vmm_create_address_space(void) {
 
     for (i = 0; i < 1024; i++) dir[i] = 0;
 
-    /* Copia mapeamento do kernel (entradas 768+) */
+    /*
+     * Copia o identity map do kernel (entradas 0-63 = primeiros 256 MB).
+     * Sem isso, ao trocar CR3 para um novo processo, o código do kernel
+     * (em ~1 MB) e o heap (em ~8 MB) ficariam inacessíveis.
+     */
+    for (i = 0; i < 64; i++) {
+        dir[i] = kernel_page_dir[i];
+    }
+
+    /* Copia também a região alta do kernel (0xC0000000+), se houver */
     for (i = 768; i < 1024; i++) {
         dir[i] = kernel_page_dir[i];
     }
@@ -124,19 +133,14 @@ void vmm_init(void) {
     for (i = 0; i < 1024; i++) kernel_page_dir[i] = 0;
 
     /*
-     * Identity map dos primeiros 32 MB com PSE (4 MB pages):
-     *   entrada 0 → 0x00000000 - 0x003FFFFF  (0   – 4 MB)
-     *   entrada 1 → 0x00400000 - 0x007FFFFF  (4   – 8 MB)
-     *   entrada 2 → 0x00800000 - 0x00BFFFFF  (8   – 12 MB)  ← heap
-     *   entrada 3 → 0x00C00000 - 0x00FFFFFF  (12  – 16 MB)
-     *   entrada 4 → 0x01000000 - 0x013FFFFF  (16  – 20 MB)
-     *   entrada 5 → 0x01400000 - 0x017FFFFF  (20  – 24 MB)
-     *   entrada 6 → 0x01800000 - 0x01BFFFFF  (24  – 28 MB)
-     *   entrada 7 → 0x01C00000 - 0x01FFFFFF  (28  – 32 MB)
+     * Identity map dos primeiros 256 MB com PSE (4 MB pages por entrada):
+     * 64 entradas × 4 MB = 256 MB — cobre toda a RAM típica do QEMU (-m 256M).
+     * Isso garante que endereços físicos alocados pelo PMM em qualquer parte
+     * da RAM sejam acessíveis pelo kernel via identidade virtual=físico.
      */
     uint32_t mb4;
-    for (mb4 = 0; mb4 < 8; mb4++) {
-        kernel_page_dir[mb4] = (mb4 * 0x400000) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_4MB;
+    for (mb4 = 0; mb4 < 64; mb4++) {
+        kernel_page_dir[mb4] = (mb4 * 0x400000U) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_4MB;
     }
 
     /* Ativa PSE (CR4 bit 4) */

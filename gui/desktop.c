@@ -12,6 +12,12 @@
 #include <kernel/timer.h>
 #include <security/users.h>
 #include <proc/process.h>
+#include <proc/scheduler.h>
+#include <proc/elf.h>
+#include <fs/vfs.h>
+#include <mm/heap.h>
+#include <compat/detect.h>
+#include <compat/linux_compat.h>
 #include <apps/calculator.h>
 #include <apps/task_manager.h>
 #include <apps/about.h>
@@ -66,9 +72,86 @@ static void term_puts(const char *s) {
     while (*s) term_putchar(*s++);
 }
 
+/* Carrega e executa um binário Linux ELF — saída vai para o terminal */
+static void term_run_linux(const char *path) {
+    linux_compat_set_output(term_putchar);
+
+    vfs_node_t *node = vfs_resolve(path);
+    if (!node) {
+        term_puts("Erro: arquivo nao encontrado: ");
+        term_puts(path);
+        term_puts("\n");
+        return;
+    }
+
+    uint32_t size = node->size;
+    if (size == 0 || size > 1024 * 1024) {
+        term_puts("Erro: tamanho invalido\n");
+        return;
+    }
+
+    uint8_t *data = (uint8_t *)kmalloc(size);
+    if (!data) {
+        term_puts("Erro: sem memoria\n");
+        return;
+    }
+
+    vfs_open(node, O_RDONLY);
+    vfs_read(node, 0, size, data);
+    vfs_close(node);
+
+    binary_type_t btype = detect_binary_type(data, size);
+    if (btype != BINARY_LINUX_ELF && btype != BINARY_KRYPX_ELF) {
+        kfree(data);
+        term_puts("Erro: nao e um ELF i386 Linux valido\n");
+        return;
+    }
+
+    if (!elf_validate(data, size)) {
+        kfree(data);
+        term_puts("Erro: ELF corrompido\n");
+        return;
+    }
+
+    /* Extrai só o nome do arquivo para o PCB */
+    const char *pname = path;
+    {
+        const char *t = path;
+        while (*t) { if (*t == '/') pname = t + 1; t++; }
+    }
+
+    process_t *proc = process_create(pname, 0, 2);
+    if (!proc) {
+        kfree(data);
+        term_puts("Erro: falha ao criar processo\n");
+        return;
+    }
+
+    elf_load_result_t res;
+    if (elf_load(proc, data, size, &res) != 0) {
+        kfree(data);
+        term_puts("Erro: falha ao carregar ELF\n");
+        return;
+    }
+    kfree(data);
+
+    proc->ctx.eip    = res.entry_point;
+    proc->ctx.esp    = res.user_stack_top;
+    proc->ctx.eflags = 0x202;
+    proc->heap_start = res.heap_base;
+    proc->heap_end   = res.heap_base;
+    proc->compat_mode = (btype == BINARY_LINUX_ELF) ? COMPAT_LINUX : COMPAT_NONE;
+
+    scheduler_add(proc);
+
+    term_puts("[OK] Executando: ");
+    term_puts(pname);
+    term_puts("\n");
+}
+
 static void term_handle_command(const char *cmd) {
     if (strcmp(cmd, "help") == 0) {
-        term_puts("Comandos: help, clear, version, ls\n");
+        term_puts("Comandos: help, clear, version, ls, test_linux\n");
     } else if (strcmp(cmd, "clear") == 0) {
         int i;
         for (i = 0; i < TERM_LINES; i++) memset(term_buf[i], 0, TERM_COLS+1);
@@ -76,7 +159,13 @@ static void term_handle_command(const char *cmd) {
     } else if (strcmp(cmd, "version") == 0) {
         term_puts("Krypx v0.1.0 - Custom OS bare-metal x86\n");
     } else if (strcmp(cmd, "ls") == 0) {
-        term_puts("hello.txt  docs/\n");
+        term_puts("hello.txt  docs/  test_linux\n");
+    } else if (strcmp(cmd, "test_linux") == 0) {
+        term_puts("[COMPAT] Carregando binario Linux...\n");
+        term_run_linux("/test_linux");
+    } else if (cmd[0] == '/') {
+        /* Tenta executar caminho absoluto como ELF */
+        term_run_linux(cmd);
     } else if (cmd[0]) {
         term_puts("Comando desconhecido: ");
         term_puts(cmd);
