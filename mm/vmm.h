@@ -32,6 +32,8 @@ uint64_t  vmm_get_physical(pml4e_t *pml4, uint64_t virt);
 void      vmm_map_range(pml4e_t *pml4, uint64_t virt, uint64_t phys,
                         uint64_t size, uint64_t flags);
 pml4e_t  *vmm_create_address_space(void);
+pml4e_t  *vmm_clone_address_space(pml4e_t *src);   /* fork: deep-copy user pages */
+void      vmm_free_user_pages(pml4e_t *pml4);       /* execve: free old user pages */
 void      vmm_switch_address_space(pml4e_t *pml4);
 pml4e_t  *vmm_get_current_dir(void);
 

@@ -77,6 +77,12 @@ typedef struct process {
     term_pipe_t  *stdout_pipe;       /* process writes fd 1/2; GUI reads here */
     bool          wait_stdin;        /* blocked waiting for stdin data */
 
+    /* fork() resumption state — set by lx64_fork before adding child to scheduler */
+    uint64_t      fork_user_rip;
+    uint64_t      fork_user_rsp;
+    uint64_t      fork_user_rflags;
+    uint64_t      fork_tls;        /* FS base for CLONE_SETTLS threads */
+
     struct process *parent;
     struct process *next;
 } process_t;
@@ -94,5 +100,7 @@ void       process_iterate(void (*cb)(process_t *p, void *ctx), void *ctx);
 void       process_child_exited(process_t *child);  /* wake waiting parent */
 void       process_stdin_push(process_t *p, char c);  /* send char to process stdin */
 int        process_stdout_read(process_t *p);          /* read char from process stdout (-1=empty) */
+process_t *process_fork(process_t *parent, uint64_t kstack_entry);
+void __attribute__((noreturn)) fork_child_complete(void);
 
 #endif

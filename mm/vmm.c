@@ -1,6 +1,7 @@
 
 #include <mm/vmm.h>
 #include <mm/pmm.h>
+#include <lib/string.h>
 #include <drivers/vga.h>
 #include <system.h>
 #include <types.h>
@@ -121,6 +122,85 @@ pml4e_t *vmm_create_address_space(void) {
     /* Share the kernel's first PML4 entry (identity map 0–4 GB) */
     pml4[0] = kernel_pml4[0];
     return pml4;
+}
+
+/* Deep-copy all user-space pages (PAGE_USER set) from src into a new PML4.
+ * Kernel mappings (entry 0, non-user pages) are shared, not copied. */
+pml4e_t *vmm_clone_address_space(pml4e_t *src_pml4) {
+    if (!src_pml4) return 0;
+    pml4e_t *dst = vmm_create_address_space();
+    if (!dst) return 0;
+
+    uint32_t i4, i3, i2, i1;
+    for (i4 = 0; i4 < 512; i4++) {
+        if (!(src_pml4[i4] & PAGE_PRESENT)) continue;
+        uint64_t *src_pdpt = (uint64_t *)(src_pml4[i4] & ~0xFFFULL);
+        for (i3 = 0; i3 < 512; i3++) {
+            if (!(src_pdpt[i3] & PAGE_PRESENT)) continue;
+            uint64_t *src_pd = (uint64_t *)(src_pdpt[i3] & ~0xFFFULL);
+            for (i2 = 0; i2 < 512; i2++) {
+                if (!(src_pd[i2] & PAGE_PRESENT)) continue;
+                if (src_pd[i2] & PAGE_2MB) {
+                    /* 2MB page — only copy user pages, split into 4KB */
+                    if (!(src_pd[i2] & PAGE_USER)) continue;
+                    uint64_t src_base = src_pd[i2] & ~(uint64_t)0x1FFFFF;
+                    uint64_t virt_base = ((uint64_t)i4 << 39) | ((uint64_t)i3 << 30) | ((uint64_t)i2 << 21);
+                    uint64_t flags = (src_pd[i2] & 0xFFF) & ~(uint64_t)PAGE_2MB;
+                    for (i1 = 0; i1 < 512; i1++) {
+                        uint64_t np = pmm_alloc_page();
+                        if (!np) return dst;
+                        memcpy((void *)(uintptr_t)np, (void *)(uintptr_t)(src_base + i1 * PAGE_SIZE), (uint32_t)PAGE_SIZE);
+                        vmm_map_page(dst, virt_base + i1 * PAGE_SIZE, np, flags);
+                    }
+                    continue;
+                }
+                uint64_t *src_pt = (uint64_t *)(src_pd[i2] & ~0xFFFULL);
+                for (i1 = 0; i1 < 512; i1++) {
+                    if (!(src_pt[i1] & PAGE_PRESENT)) continue;
+                    if (!(src_pt[i1] & PAGE_USER)) continue;
+                    uint64_t src_phys = src_pt[i1] & ~0xFFFULL;
+                    uint64_t np = pmm_alloc_page();
+                    if (!np) return dst;
+                    memcpy((void *)(uintptr_t)np, (void *)(uintptr_t)src_phys, (uint32_t)PAGE_SIZE);
+                    uint64_t virt = ((uint64_t)i4 << 39) | ((uint64_t)i3 << 30) |
+                                    ((uint64_t)i2 << 21) | ((uint64_t)i1 << 12);
+                    vmm_map_page(dst, virt, np, src_pt[i1] & 0xFFF);
+                }
+            }
+        }
+    }
+    return dst;
+}
+
+/* Free all user-space pages mapped in pml4 (called by execve to replace address space). */
+void vmm_free_user_pages(pml4e_t *pml4) {
+    if (!pml4) return;
+    uint32_t i4, i3, i2, i1;
+    for (i4 = 0; i4 < 512; i4++) {
+        if (!(pml4[i4] & PAGE_PRESENT)) continue;
+        uint64_t *pdpt = (uint64_t *)(pml4[i4] & ~0xFFFULL);
+        for (i3 = 0; i3 < 512; i3++) {
+            if (!(pdpt[i3] & PAGE_PRESENT)) continue;
+            uint64_t *pd = (uint64_t *)(pdpt[i3] & ~0xFFFULL);
+            for (i2 = 0; i2 < 512; i2++) {
+                if (!(pd[i2] & PAGE_PRESENT)) continue;
+                if (pd[i2] & PAGE_2MB) {
+                    if (pd[i2] & PAGE_USER) {
+                        pmm_free_page(pd[i2] & ~(uint64_t)0x1FFFFF);
+                        pd[i2] = 0;
+                    }
+                    continue;
+                }
+                uint64_t *pt = (uint64_t *)(pd[i2] & ~0xFFFULL);
+                for (i1 = 0; i1 < 512; i1++) {
+                    if ((pt[i1] & PAGE_PRESENT) && (pt[i1] & PAGE_USER)) {
+                        pmm_free_page(pt[i1] & ~0xFFFULL);
+                        pt[i1] = 0;
+                    }
+                }
+            }
+        }
+    }
 }
 
 void vmm_switch_address_space(pml4e_t *pml4) {

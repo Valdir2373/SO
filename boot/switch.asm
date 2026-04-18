@@ -11,6 +11,8 @@ bits 64
 
 section .text
 global context_switch
+global fork_return_to_user
+extern fork_child_complete
 
 context_switch:
     ; ── Save previous context ────────────────────────────────────────────────
@@ -76,3 +78,14 @@ context_switch:
     mov     rdi, [rsi +  40]
     mov     rsi, [rsi +  32]   ; must be very last use of rsi as pointer
     ret
+
+; fork_return_to_user — entry point for a freshly-forked child process.
+; The scheduler context_switches here (ctx.rip = fork_return_to_user).
+; Calls the C helper fork_child_complete() which reads fork_user_rip/rsp/rflags
+; from the current process struct and executes sysretq to return to user space
+; with RAX=0 (fork returns 0 in child).
+fork_return_to_user:
+    ; Stack is a fresh kernel stack set up by lx64_fork.
+    ; Call C helper — it will never return (executes sysretq).
+    call fork_child_complete
+    hlt

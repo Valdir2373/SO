@@ -184,3 +184,77 @@ process_t *process_get(uint32_t pid) {
     }
     return 0;
 }
+
+/* Deep-clone a process for fork()/clone().
+ * kstack_entry = initial ctx.rip (e.g. fork_return_to_user). */
+process_t *process_fork(process_t *parent, uint64_t kstack_entry) {
+    if (!parent) return 0;
+    process_t *child = alloc_process();
+    if (!child) return 0;
+
+    /* Copy parent PCB */
+    *child = *parent;
+
+    child->pid        = next_pid++;
+    child->state      = PROC_READY;
+    child->parent     = parent;
+    child->nchildren  = 0;
+    child->next       = 0;
+    child->waiting_child = false;
+    child->wait_result   = 0;
+
+    /* Fresh kernel stack (one page = 4 KB) */
+    uint64_t kpage = pmm_alloc_page();
+    if (!kpage) { child->state = PROC_UNUSED; return 0; }
+    child->kernel_stack = kpage + KERNEL_STACK_SIZE;
+
+    /* Deep-copy user-space pages */
+    child->page_dir = vmm_clone_address_space(parent->page_dir);
+    if (!child->page_dir) {
+        pmm_free_page(kpage);
+        child->state = PROC_UNUSED;
+        return 0;
+    }
+
+    /* Kernel context: starts at kstack_entry (fork_return_to_user) */
+    child->ctx.rip    = kstack_entry;
+    child->ctx.rsp    = child->kernel_stack;
+    child->ctx.cr3    = (uint64_t)child->page_dir;
+    child->ctx.rflags = 0x202;
+
+    /* Register in parent's children list */
+    if (parent->nchildren < 8)
+        parent->children[parent->nchildren++] = child->pid;
+
+    return child;
+}
+
+/* Called from fork_return_to_user (switch.asm) after the child is scheduled.
+ * Reads the stored user-mode resume state and executes sysretq to jump there
+ * with RAX=0 (fork returns 0 in the child). */
+void __attribute__((noreturn)) fork_child_complete(void) {
+    process_t *p = process_current();
+    uint64_t rip    = p->fork_user_rip;
+    uint64_t rflags = p->fork_user_rflags;
+    uint64_t rsp    = p->fork_user_rsp;
+    uint64_t tls    = p->fork_tls;
+
+    if (tls) {
+        /* Set FS base for CLONE_SETTLS threads */
+        uint32_t lo = (uint32_t)(tls & 0xFFFFFFFFULL);
+        uint32_t hi = (uint32_t)(tls >> 32);
+        __asm__ volatile ("wrmsr" : : "c"(0xC0000100U), "a"(lo), "d"(hi));
+    }
+
+    __asm__ volatile (
+        "mov %0, %%rcx\n\t"
+        "mov %1, %%r11\n\t"
+        "mov %2, %%rsp\n\t"
+        "xor %%eax, %%eax\n\t"
+        "sysretq"
+        :
+        : "r"(rip), "r"(rflags), "r"(rsp)
+        : "rcx", "r11", "rax"
+    );
+    __builtin_unreachable();
+}

@@ -22,9 +22,10 @@
 #include <types.h>
 
 /* ── errno values ────────────────────────────────────────────────────────── */
-#define EPERM    1
-#define ENOENT   2
-#define ESRCH    3
+#define EPERM     1
+#define ENOENT    2
+#define ESRCH     3
+#define ENOEXEC   8
 #define EINTR    4
 #define EIO      5
 #define EBADF    9
@@ -747,22 +748,159 @@ static int64_t lx64_exit(int64_t code) {
     return 0;
 }
 
-static int64_t lx64_fork(void) { return ERR(ENOSYS); }
-static int64_t lx64_clone(uint64_t flags, uint64_t stack, uint64_t ptid,
-                           uint64_t ctid, uint64_t tls) {
-    (void)flags; (void)stack; (void)ptid; (void)ctid; (void)tls;
-    return ERR(ENOSYS);
+/* ── extern globals from syscall_entry.asm and switch.asm ─────────────────── */
+extern uint64_t g_syscall_user_rsp;
+extern void fork_return_to_user(void);
+
+/* ── CLONE flags ─────────────────────────────────────────────────────────── */
+#define CLONE_VM             0x00000100ULL
+#define CLONE_FILES          0x00000400ULL
+#define CLONE_THREAD         0x00010000ULL
+#define CLONE_SETTLS         0x00080000ULL
+#define CLONE_PARENT_SETTID  0x00100000ULL
+#define CLONE_CHILD_CLEARTID 0x00200000ULL
+#define CLONE_CHILD_SETTID   0x01000000ULL
+
+static int64_t lx64_fork(syscall64_frame_t *f) {
+    process_t *parent = process_current();
+    if (!parent) return ERR(ENOMEM);
+
+    process_t *child = process_fork(parent, (uint64_t)(uintptr_t)fork_return_to_user);
+    if (!child) return ERR(ENOMEM);
+
+    child->fork_user_rip    = f->rcx;
+    child->fork_user_rflags = f->r11;
+    child->fork_user_rsp    = g_syscall_user_rsp;
+    child->fork_tls         = 0;
+    child->compat_mode      = parent->compat_mode;
+    child->stdin_pipe       = parent->stdin_pipe;
+    child->stdout_pipe      = parent->stdout_pipe;
+
+    scheduler_add(child);
+    ser64("[LX64] fork -> child pid=");
+    ser64_hex((uint64_t)child->pid);
+    ser64("\r\n");
+    return (int64_t)child->pid;
 }
 
-static int64_t lx64_wait4(int64_t pid, int32_t *status, uint64_t options, void *rusage) {
-    (void)options; (void)rusage;
-    process_t *p = process_get((uint32_t)(pid > 0 ? pid : 0));
-    if (!p) return ERR(ECHILD);
-    while (p->state != PROC_ZOMBIE) {
-        __asm__ volatile ("hlt");
+static int64_t lx64_clone(syscall64_frame_t *f, uint64_t flags, uint64_t stack,
+                           uint64_t ptid, uint64_t ctid, uint64_t tls) {
+    (void)ctid;
+    process_t *parent = process_current();
+    if (!parent) return ERR(ENOMEM);
+
+    process_t *child = process_fork(parent, (uint64_t)(uintptr_t)fork_return_to_user);
+    if (!child) return ERR(ENOMEM);
+
+    child->fork_user_rip    = f->rcx;
+    child->fork_user_rflags = f->r11;
+    child->fork_user_rsp    = stack ? stack : g_syscall_user_rsp;
+    child->fork_tls         = (flags & CLONE_SETTLS) ? tls : 0;
+    child->compat_mode      = parent->compat_mode;
+    child->stdin_pipe       = parent->stdin_pipe;
+    child->stdout_pipe      = parent->stdout_pipe;
+
+    if ((flags & CLONE_PARENT_SETTID) && ptid)
+        *(uint32_t*)(uintptr_t)ptid = child->pid;
+
+    scheduler_add(child);
+    ser64("[LX64] clone -> child pid=");
+    ser64_hex((uint64_t)child->pid);
+    ser64("\r\n");
+    return (int64_t)child->pid;
+}
+
+static int64_t lx64_wait4(syscall64_frame_t *f, int64_t pid, int32_t *status,
+                           uint64_t options, void *rusage) {
+    (void)options; (void)rusage; (void)f;
+    process_t *parent = process_current();
+    if (!parent) return ERR(ECHILD);
+
+    process_t *child = 0;
+    if (pid > 0) {
+        child = process_get((uint32_t)pid);
+        if (!child || child->parent != parent) return ERR(ECHILD);
+        if (child->state == PROC_ZOMBIE) goto reap;
+    } else {
+        /* pid == -1: look for any zombie child */
+        uint32_t i;
+        for (i = 0; i < parent->nchildren; i++) {
+            process_t *c = process_get(parent->children[i]);
+            if (c && c->state == PROC_ZOMBIE) { child = c; goto reap; }
+        }
+        if (parent->nchildren == 0) return ERR(ECHILD);
     }
-    if (status) *status = (int32_t)(p->exit_code << 8);
-    return (int64_t)p->pid;
+
+    /* Block until a child exits */
+    parent->waiting_child = true;
+    parent->state = PROC_BLOCKED;
+    schedule();
+
+    /* Woken by process_child_exited() — find the zombie */
+    if (pid > 0) {
+        child = process_get((uint32_t)pid);
+    } else {
+        uint32_t i;
+        for (i = 0; i < parent->nchildren; i++) {
+            process_t *c = process_get(parent->children[i]);
+            if (c && c->state == PROC_ZOMBIE) { child = c; break; }
+        }
+    }
+    if (!child) return ERR(ECHILD);
+
+reap:
+    if (status) *status = (int32_t)(child->exit_code << 8);
+    return (int64_t)child->pid;
+}
+
+#include <proc/elf.h>
+
+static int64_t lx64_execve(syscall64_frame_t *f, const char *path,
+                            uint64_t *argv, uint64_t *envp) {
+    (void)argv; (void)envp;
+    if (!path) return ERR(EFAULT);
+
+    vfs_node_t *node = vfs_resolve(path);
+    if (!node) return ERR(ENOENT);
+
+    uint32_t sz = node->size;
+    if (sz < 4) return ERR(ENOEXEC);
+    uint8_t *data = (uint8_t*)kmalloc(sz);
+    if (!data) return ERR(ENOMEM);
+    vfs_read(node, 0, sz, data);
+
+    if (!elf_validate(data, sz)) {
+        kfree(data);
+        return ERR(ENOEXEC);
+    }
+
+    process_t *p = process_current();
+    if (!p) { kfree(data); return ERR(ESRCH); }
+
+    /* Tear down old user address space */
+    vmm_free_user_pages(p->page_dir);
+    p->heap_start = 0;
+    p->heap_end   = 0;
+
+    /* Load new image into current process */
+    elf_load_result_t res;
+    int r = elf_load(p, data, sz, &res);
+    kfree(data);
+    if (r < 0) return ERR(ENOEXEC);
+
+    p->heap_start  = res.heap_base;
+    p->heap_end    = res.heap_base;
+    p->compat_mode = res.is_linux_compat ? COMPAT_LINUX : COMPAT_NONE;
+
+    /* Redirect sysretq to new entry point with new stack */
+    f->rcx = res.entry_point;
+    f->r11 = 0x202;
+    g_syscall_user_rsp = res.user_stack_top;
+
+    ser64("[LX64] execve -> entry=");
+    ser64_hex(res.entry_point);
+    ser64("\r\n");
+    return 0;  /* parent's sysretq goes to new entry */
 }
 
 static int64_t lx64_kill(int64_t pid, int64_t sig) {
@@ -1529,13 +1667,13 @@ void linux_syscall64_handler(syscall64_frame_t *f) {
     case SYS64_UMASK:      ret = lx64_umask(f->rdi); break;
     case SYS64_EXIT:       /* fallthrough */
     case SYS64_EXIT_GROUP: ret = lx64_exit((int64_t)f->rdi); break;
-    case SYS64_FORK:       ret = lx64_fork(); break;
-    case SYS64_VFORK:      ret = lx64_fork(); break;
-    case SYS64_CLONE:      ret = lx64_clone(f->rdi,f->rsi,f->rdx,f->r10,f->r8); break;
-    case SYS64_WAIT4:      ret = lx64_wait4((int64_t)f->rdi,(int32_t*)(uintptr_t)f->rsi,f->rdx,(void*)(uintptr_t)f->r10); break;
+    case SYS64_FORK:       ret = lx64_fork(f); break;
+    case SYS64_VFORK:      ret = lx64_fork(f); break;
+    case SYS64_CLONE:      ret = lx64_clone(f,f->rdi,f->rsi,f->rdx,f->r10,f->r8); break;
+    case SYS64_WAIT4:      ret = lx64_wait4(f,(int64_t)f->rdi,(int32_t*)(uintptr_t)f->rsi,f->rdx,(void*)(uintptr_t)f->r10); break;
     case SYS64_KILL:       ret = lx64_kill((int64_t)f->rdi,(int64_t)f->rsi); break;
     case SYS64_TGKILL:     ret = 0; break;
-    case SYS64_EXECVE:     ret = ERR(ENOSYS); break;
+    case SYS64_EXECVE:     ret = lx64_execve(f,(const char*)(uintptr_t)f->rdi,(uint64_t*)(uintptr_t)f->rsi,(uint64_t*)(uintptr_t)f->rdx); break;
     case SYS64_SCHED_YIELD: ret = 0; schedule(); break;
     case SYS64_SET_TID_ADDR: ret = lx64_set_tid_address((uint64_t*)(uintptr_t)f->rdi); break;
 
