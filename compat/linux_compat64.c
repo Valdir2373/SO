@@ -1991,8 +1991,15 @@ static bool epoll_fd_readable(process_t *p, uint32_t fd) {
     /* unix socket */
     if (node->flags == VFS_CHARDEV && impl < (uint32_t)MAX_KRYPX_SOCKETS) {
         krypx_sock_t *ks = &ksocks[impl];
-        if (ks->type == KRYPX_SOCK_UNIX && ks->idx >= 0)
-            return (unix_socks[ks->idx].buf_write - unix_socks[ks->idx].buf_read) > 0;
+        if (ks->type == KRYPX_SOCK_UNIX && ks->idx >= 0) {
+            unix_sock_t *us = &unix_socks[ks->idx];
+            /* For kernel-service sockets (e.g. X11), process pending requests first */
+            if (us->connected && us->peer >= (int)PEER_KSVC_BASE) {
+                extern void x11_server_process(int svc_idx);
+                x11_server_process(us->peer - PEER_KSVC_BASE);
+            }
+            return (us->buf_write - us->buf_read) > 0;
+        }
     }
     return false;
 }
@@ -2010,7 +2017,7 @@ static int64_t lx64_epoll_wait(uint64_t epfd, epoll_event_t *evs, int maxevents,
         int nready = 0, i;
         for (i = 0; i < es->nwatches && nready < maxevents; i++) {
             bool in  = (es->watches[i].events & EPOLLIN)  && epoll_fd_readable(p, es->watches[i].fd);
-            bool out = (es->watches[i].events & EPOLLOUT); /* writes always ready */
+            bool out = !!(es->watches[i].events & EPOLLOUT); /* our buffers are always writable */
             if (in || out) {
                 evs[nready].events = (in ? (uint32_t)EPOLLIN : 0u) | (out ? (uint32_t)EPOLLOUT : 0u);
                 evs[nready].data   = es->watches[i].data;
