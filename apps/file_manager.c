@@ -31,7 +31,7 @@ static int      fm_count   = 0;
 static int      fm_sel     = 0;
 static int      fm_scroll  = 0;
 
-/* New-dir input state */
+
 static bool     fm_input_active = false;
 static char     fm_input_buf[128];
 static int      fm_input_len    = 0;
@@ -74,7 +74,7 @@ static void fm_on_paint(window_t *win) {
 
     canvas_fill_rect(bx, by, bw, bh, 0x001A2533);
 
-    /* Toolbar */
+    
     canvas_fill_rect(bx, by, bw, FM_TOOLBAR_H, 0x00263545);
     canvas_fill_rounded_rect(bx + 4, by + 4, 44, 24, 4, 0x00333333);
     canvas_draw_string(bx + 10, by + 10, "< Up", 0x00DFE6E9, COLOR_TRANSPARENT);
@@ -85,13 +85,13 @@ static void fm_on_paint(window_t *win) {
     canvas_fill_rounded_rect(bx + 148, by + 4, 44, 24, 4, 0x00333333);
     canvas_draw_string(bx + 152, by + 10, "Edit", 0x004A90D9, COLOR_TRANSPARENT);
 
-    /* Path bar */
+    
     int pw = bw - 200;
     canvas_fill_rect(bx + 196, by + 6, pw, 20, 0x00141E26);
     canvas_draw_rect(bx + 196, by + 6, pw, 20, 0x00636E72);
     canvas_draw_string(bx + 200, by + 10, fm_cwd, 0x00636E72, COLOR_TRANSPARENT);
 
-    /* File list */
+    
     int ly = by + FM_TOOLBAR_H;
     int vis = (bh - FM_TOOLBAR_H) / FM_ITEM_H;
     int i;
@@ -107,13 +107,13 @@ static void fm_on_paint(window_t *win) {
         canvas_draw_string(bx + 72, iy + 2, fm_names[idx], fc, COLOR_TRANSPARENT);
     }
 
-    /* Empty message */
+    
     if (fm_count == 0) {
         canvas_draw_string(bx + bw/2 - 40, by + FM_TOOLBAR_H + 60,
                            "(vazio)", 0x00636E72, COLOR_TRANSPARENT);
     }
 
-    /* Input overlay */
+    
     if (fm_input_active) {
         int ox = bx + bw/2 - 140, oy = by + bh/2 - 30;
         canvas_fill_rounded_rect(ox, oy, 280, 60, 6, 0x00263545);
@@ -126,7 +126,7 @@ static void fm_on_paint(window_t *win) {
         }
     }
 
-    /* Keys hint */
+    
     canvas_draw_string(bx + 4, by + bh - CHAR_HEIGHT - 2,
         "Setas:navegar  Enter:abrir  Backspace:voltar  F2:novo dir  Del:apagar  E:editar",
         0x00444444, COLOR_TRANSPARENT);
@@ -163,19 +163,19 @@ static void fm_on_keydown(window_t *win, char key) {
         return;
     }
 
-    if (key == 'j' || key == 2 /* down */) {  /* Arrow down = ctrl+B in some mappings */
+    if (key == 'j' || key == 2) {
         if (fm_sel < fm_count - 1) {
             fm_sel++;
             int vis = (win->content_h - FM_TOOLBAR_H) / FM_ITEM_H;
             if (fm_sel >= fm_scroll + vis) fm_scroll++;
         }
-    } else if (key == 'k' || key == 16 /* up */) {
+    } else if (key == 'k' || key == 16 ) {
         if (fm_sel > 0) {
             fm_sel--;
             if (fm_sel < fm_scroll) fm_scroll = fm_sel;
         }
     } else if (key == '\n') {
-        /* Enter: open */
+        
         if (fm_sel >= 0 && fm_sel < fm_count) {
             if (fm_is_dir[fm_sel]) {
                 int clen = strlen(fm_cwd);
@@ -185,7 +185,7 @@ static void fm_on_keydown(window_t *win, char key) {
                 strncat(newpath, fm_names[fm_sel], 255 - strlen(newpath));
                 fm_load_dir(newpath);
             } else {
-                /* Open file in text editor */
+                
                 char fpath[256];
                 int clen = strlen(fm_cwd);
                 strncpy(fpath, fm_cwd, 255);
@@ -196,10 +196,10 @@ static void fm_on_keydown(window_t *win, char key) {
         }
     } else if (key == '\b') {
         fm_go_up();
-    } else if (key == 6 /* Ctrl+F → F2 new dir */ || key == 'n') {
+    } else if (key == 6  || key == 'n') {
         fm_input_active = true;
         fm_input_len = 0; fm_input_buf[0] = 0;
-    } else if (key == 4 /* Ctrl+D → delete */ || key == 127) {
+    } else if (key == 4  || key == 127) {
         if (fm_sel >= 0 && fm_sel < fm_count) {
             char dpath[256];
             int clen = strlen(fm_cwd);
@@ -211,7 +211,7 @@ static void fm_on_keydown(window_t *win, char key) {
             if (dir && name[0]) vfs_unlink(dir, name);
             fm_load_dir(fm_cwd);
         }
-    } else if (key == 'e' || key == 5 /* Ctrl+E */) {
+    } else if (key == 'e' || key == 5 ) {
         if (fm_sel >= 0 && fm_sel < fm_count && !fm_is_dir[fm_sel]) {
             char fpath[256];
             int clen = strlen(fm_cwd);

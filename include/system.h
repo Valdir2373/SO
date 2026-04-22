@@ -14,7 +14,7 @@
 #define KERNEL_HEAP_START    0x800000ULL
 #define KERNEL_HEAP_SIZE     (16ULL * 1024ULL * 1024ULL)
 
-/* PAGE_SIZE defined in mm/pmm.h — avoid redefinition */
+
 #ifndef PAGE_SIZE
 #define PAGE_SIZE            4096ULL
 #define PAGE_SHIFT           12

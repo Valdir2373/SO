@@ -177,7 +177,7 @@ void interrupt_handler(registers_t *regs) {
 
     
     if (vec < 32) {
-        /* Serial panic dump */
+        
         {
             uint64_t v;
             int      k;

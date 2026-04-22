@@ -1,12 +1,12 @@
 
-/* ACPI driver — shutdown, reboot, basic power management */
+
 
 #include <drivers/acpi.h>
 #include <io.h>
 #include <lib/string.h>
 #include <types.h>
 
-/* ─── RSDP / RSDT ─────────────────────────────────────────────────────────── */
+
 typedef struct {
     char     sig[8];
     uint8_t  checksum;
@@ -29,10 +29,10 @@ typedef struct {
 
 typedef struct {
     acpi_hdr_t hdr;
-    uint32_t   ptrs[1]; /* variable */
+    uint32_t   ptrs[1]; 
 } __attribute__((packed)) rsdt_t;
 
-/* FADT — only fields we need */
+
 typedef struct {
     acpi_hdr_t hdr;
     uint32_t   facs;
@@ -78,7 +78,7 @@ typedef struct {
 
 static uint32_t pm1a_cnt_port = 0;
 static uint32_t pm1b_cnt_port = 0;
-static uint16_t slp_typa5     = 0; /* S5 SLP_TYPa from DSDT */
+static uint16_t slp_typa5     = 0; 
 static uint16_t slp_typb5     = 0;
 static bool     acpi_ok       = false;
 
@@ -90,10 +90,10 @@ static uint8_t acpi_cksum(const void *p, uint32_t len) {
     return s;
 }
 
-/* Find RSDP in EBDA / BIOS area */
+
 static rsdp_t *find_rsdp(void) {
     uint32_t i;
-    /* Search EBDA (1st KB at 0x000 segment pointed by 0x40E) */
+    
     uint16_t ebda_seg = *(uint16_t *)0x40E;
     uint32_t ebda = (uint32_t)ebda_seg << 4;
     if (ebda >= 0x80000 && ebda < 0xA0000) {
@@ -103,7 +103,7 @@ static rsdp_t *find_rsdp(void) {
                 return (rsdp_t *)i;
         }
     }
-    /* Search 0xE0000 – 0xFFFFF */
+    
     for (i = 0xE0000; i < 0x100000; i += 16) {
         if (memcmp((void *)i, "RSD PTR ", 8) == 0 &&
             acpi_cksum((void *)i, 20) == 0)
@@ -112,37 +112,37 @@ static rsdp_t *find_rsdp(void) {
     return 0;
 }
 
-/* Scan DSDT AML bytes for \_S5 object → extract SLP_TYP values */
+
 static void parse_s5(const uint8_t *dsdt_start, uint32_t len) {
     uint32_t i;
     for (i = 0; i < len - 6; i++) {
-        /* \_S5_ encoded as {0x08, '_', 'S', '5', '_'} or {'_','S','5','_'} */
+        
         if ((dsdt_start[i]   == '_' || (i > 0 && dsdt_start[i-1] == 0x08)) &&
             dsdt_start[i]   == '_' &&
             dsdt_start[i+1] == 'S' &&
             dsdt_start[i+2] == '5' &&
             dsdt_start[i+3] == '_') {
-            /* S5 object: skip name + package header, read SLP_TYPa and SLP_TYPb */
+            
             uint32_t j = i + 4;
-            if (dsdt_start[j] == 0x12) j++; /* PackageOp */
-            j++;                              /* pkg len */
-            if (dsdt_start[j] == 0x04) j++; /* NumElements */
-            /* First element = SLP_TYPa */
-            if (dsdt_start[j] == 0x0A) { /* BytePrefix */
+            if (dsdt_start[j] == 0x12) j++; 
+            j++;                              
+            if (dsdt_start[j] == 0x04) j++; 
+            
+            if (dsdt_start[j] == 0x0A) { 
                 slp_typa5 = (uint16_t)(dsdt_start[j+1] & 0x1F) << 10;
                 j += 2;
             } else if (dsdt_start[j] == 0x00) {
                 slp_typa5 = 0;
                 j++;
             }
-            /* Second element = SLP_TYPb */
+            
             if (dsdt_start[j] == 0x0A) {
                 slp_typb5 = (uint16_t)(dsdt_start[j+1] & 0x1F) << 10;
             }
             return;
         }
     }
-    /* Fallback: standard S5 type bits for most hardware */
+    
     slp_typa5 = 7 << 10;
     slp_typb5 = 7 << 10;
 }
@@ -167,7 +167,7 @@ void acpi_init(void) {
     pm1a_cnt_port = fadt->pm1a_cnt;
     pm1b_cnt_port = fadt->pm1b_cnt;
 
-    /* Parse DSDT for S5 sleep types */
+    
     if (fadt->dsdt) {
         acpi_hdr_t *dsdt_hdr = (acpi_hdr_t *)fadt->dsdt;
         if (memcmp(dsdt_hdr->sig, "DSDT", 4) == 0) {
@@ -176,22 +176,22 @@ void acpi_init(void) {
         }
     }
 
-    /* Enable ACPI if needed */
+    
     if (fadt->smi_cmd && fadt->acpi_en &&
         !(inw((uint16_t)pm1a_cnt_port) & 1)) {
         outb((uint16_t)fadt->smi_cmd, fadt->acpi_en);
         uint32_t t = 0;
         while (!(inw((uint16_t)pm1a_cnt_port) & 1) && t++ < 300)
-            ; /* wait */
+            ; 
     }
 
     acpi_ok = true;
     return;
 
 qemu_fallback:
-    /* QEMU PIIX4 PM is at 0xB000+0x04 or 0x0604 */
+    
     pm1a_cnt_port = 0x604;
-    slp_typa5 = (uint16_t)(5 << 10); /* S5 = sleep type 5 */
+    slp_typa5 = (uint16_t)(5 << 10); 
     acpi_ok = true;
 }
 
@@ -201,24 +201,24 @@ void acpi_shutdown(void) {
         if (pm1b_cnt_port)
             outw((uint16_t)pm1b_cnt_port, (uint16_t)(0x2000 | slp_typb5));
     }
-    /* QEMU specific fallbacks */
+    
     outw(0x604, 0x2000);
     outw(0xB004, 0x2000);
-    /* Final: keyboard controller reset line */
+    
     outb(0x64, 0xFE);
     __asm__ volatile("cli; hlt");
     for (;;) {}
 }
 
 void acpi_reboot(void) {
-    /* 8042 keyboard controller reset */
+    
     uint32_t t;
     for (t = 0; t < 0x10000; t++) {
         if (!(inb(0x64) & 0x02)) break;
     }
     outb(0x64, 0xFE);
     __asm__ volatile("cli");
-    /* Triple fault fallback */
+    
     volatile uint64_t null_idt = 0;
     __asm__ volatile("lidt (%0); int $0" : : "r"(&null_idt));
     for (;;) {}

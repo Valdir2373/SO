@@ -18,8 +18,8 @@ static bool shift_pressed  = false;
 static bool caps_lock      = false;
 static bool ctrl_pressed   = false;
 static bool alt_pressed    = false;
-static bool abnt2_mode     = true;   /* layout ABNT2 brasileiro */
-static uint8_t dead_key    = 0;      /* acento pendente: 1=agudo 2=til 3=circunflexo */
+static bool abnt2_mode     = true;   
+static uint8_t dead_key    = 0;      
 
 
 static const char sc_to_ascii[128] = {
@@ -69,9 +69,9 @@ static void kb_buf_push(char c) {
     }
 }
 
-/* Mapeamento de scancodes extras para ABNT2 (ç, ~, ^, acentos) */
+
 static char abnt2_apply_dead(uint8_t dk, char base) {
-    /* dk: 1=agudo 2=til 3=circunflexo 4=grave 5=trema */
+    
     static const char agudo[]  = "aeiouAEIOU";
     static const char agudo_r[]= "\xe1\xe9\xed\xf3\xfa\xc1\xc9\xcd\xd3\xda";
     static const char til[]    = "aoAO";
@@ -111,18 +111,18 @@ static void keyboard_handler(registers_t *regs) {
 
         c = use_shift ? sc_to_ascii_shift[sc] : sc_to_ascii[sc];
 
-        /* ABNT2: teclado brasileiro */
+        
         if (abnt2_mode) {
-            /* scancode 0x27 = ';' no US → 'ç' no ABNT2 */
-            if (sc == 0x27) c = use_shift ? 'C' : '\xe7';  /* ç / Ç */
-            /* scancode 0x29 = '`' no US → aspas no ABNT2 */
+            
+            if (sc == 0x27) c = use_shift ? 'C' : '\xe7';  
+            
             if (sc == 0x29) c = use_shift ? '"' : '\'';
-            /* scancodes de acento agudo (') e til (~) */
-            if (sc == 0x28) { /* acento agudo / til */
+            
+            if (sc == 0x28) { 
                 dead_key = use_shift ? 2 : 1;
                 goto eoi;
             }
-            if (sc == 0x1A) { /* ^ / ` */
+            if (sc == 0x1A) { 
                 dead_key = 3;
                 goto eoi;
             }

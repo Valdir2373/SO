@@ -9,7 +9,7 @@ bool usb_kbd_available(void);
 bool usb_mouse_available(void);
 void usb_hid_poll(void);
 
-/* Generic USB helpers — used by other USB drivers (rtl8188eu etc.) */
+
 bool usb_ctrl_req(uint8_t addr, uint8_t bmRequestType, uint8_t bRequest,
                   uint16_t wValue, uint16_t wIndex,
                   void *data, uint16_t len, bool in);

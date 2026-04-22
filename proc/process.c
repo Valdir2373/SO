@@ -77,14 +77,14 @@ process_t *process_create(const char *name, uint64_t entry, uint32_t priority) {
     strcpy(p->cwd, current_process ? current_process->cwd : "/");
     p->parent = current_process;
 
-    /* Register child in parent's list */
+    
     if (current_process && current_process->nchildren < 8)
         current_process->children[current_process->nchildren++] = p->pid;
 
     return p;
 }
 
-/* Push a byte to a process's stdin pipe and wake it if it was waiting */
+
 void process_stdin_push(process_t *p, char c) {
     if (!p || !p->stdin_pipe) return;
     term_pipe_t *pipe = p->stdin_pipe;
@@ -99,7 +99,7 @@ void process_stdin_push(process_t *p, char c) {
     }
 }
 
-/* Read one byte from a process's stdout pipe (-1 if empty) */
+
 int process_stdout_read(process_t *p) {
     if (!p || !p->stdout_pipe || p->stdout_pipe->len == 0) return -1;
     term_pipe_t *pipe = p->stdout_pipe;
@@ -185,14 +185,12 @@ process_t *process_get(uint32_t pid) {
     return 0;
 }
 
-/* Deep-clone a process for fork()/clone().
- * kstack_entry = initial ctx.rip (e.g. fork_return_to_user). */
 process_t *process_fork(process_t *parent, uint64_t kstack_entry) {
     if (!parent) return 0;
     process_t *child = alloc_process();
     if (!child) return 0;
 
-    /* Copy parent PCB */
+    
     *child = *parent;
 
     child->pid        = next_pid++;
@@ -203,12 +201,12 @@ process_t *process_fork(process_t *parent, uint64_t kstack_entry) {
     child->waiting_child = false;
     child->wait_result   = 0;
 
-    /* Fresh kernel stack (one page = 4 KB) */
+    
     uint64_t kpage = pmm_alloc_page();
     if (!kpage) { child->state = PROC_UNUSED; return 0; }
     child->kernel_stack = kpage + KERNEL_STACK_SIZE;
 
-    /* Deep-copy user-space pages */
+    
     child->page_dir = vmm_clone_address_space(parent->page_dir);
     if (!child->page_dir) {
         pmm_free_page(kpage);
@@ -216,22 +214,19 @@ process_t *process_fork(process_t *parent, uint64_t kstack_entry) {
         return 0;
     }
 
-    /* Kernel context: starts at kstack_entry (fork_return_to_user) */
+    
     child->ctx.rip    = kstack_entry;
     child->ctx.rsp    = child->kernel_stack;
     child->ctx.cr3    = (uint64_t)child->page_dir;
     child->ctx.rflags = 0x202;
 
-    /* Register in parent's children list */
+    
     if (parent->nchildren < 8)
         parent->children[parent->nchildren++] = child->pid;
 
     return child;
 }
 
-/* Called from fork_return_to_user (switch.asm) after the child is scheduled.
- * Reads the stored user-mode resume state and executes sysretq to jump there
- * with RAX=0 (fork returns 0 in the child). */
 void __attribute__((noreturn)) fork_child_complete(void) {
     process_t *p = process_current();
     uint64_t rip    = p->fork_user_rip;
@@ -240,7 +235,7 @@ void __attribute__((noreturn)) fork_child_complete(void) {
     uint64_t tls    = p->fork_tls;
 
     if (tls) {
-        /* Set FS base for CLONE_SETTLS threads */
+        
         uint32_t lo = (uint32_t)(tls & 0xFFFFFFFFULL);
         uint32_t hi = (uint32_t)(tls >> 32);
         __asm__ volatile ("wrmsr" : : "c"(0xC0000100U), "a"(lo), "d"(hi));

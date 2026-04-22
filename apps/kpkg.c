@@ -1,12 +1,3 @@
-/*
- * apps/kpkg.c — Krypx Package Manager
- *
- * Installs .kpkg archives (custom simple format) from the filesystem.
- * Usage from the terminal:
- *   kpkg install firefox    → reads /packages/firefox.kpkg, extracts to /
- *   kpkg list               → shows installed packages
- *   kpkg search [name]      → shows available .kpkg files in /packages/
- */
 
 #include "kpkg.h"
 #include <fs/vfs.h>
@@ -16,10 +7,10 @@
 #include <net/dns.h>
 #include <types.h>
 
-/* ── Header structures ─────────────────────────────────────────────────── */
+
 
 typedef struct {
-    char     magic[4];    /* "KPKG" */
+    char     magic[4];    
     uint32_t version;
     uint32_t n_files;
 } __attribute__((packed)) kpkg_hdr_t;
@@ -30,7 +21,7 @@ typedef struct {
     uint32_t size;
 } __attribute__((packed)) kpkg_entry_t;
 
-/* ── Helpers ────────────────────────────────────────────────────────────── */
+
 
 static void kpkg_puts(kpkg_print_fn fn, const char *s) { if (fn) fn(s); }
 
@@ -41,7 +32,7 @@ static void kpkg_putu(kpkg_print_fn fn, uint32_t v) {
     kpkg_puts(fn, buf + i + 1);
 }
 
-/* Ensure all directories in path exist, creating them if needed */
+
 static void mkdirs(const char *path) {
     char buf[256];
     strncpy(buf, path, 255);
@@ -61,16 +52,16 @@ static void mkdirs(const char *path) {
     }
 }
 
-/* Write data to a file, creating it if needed */
+
 static int write_file(const char *path, const uint8_t *data, uint32_t size, uint32_t mode) {
-    /* Ensure parent directories exist */
+    
     mkdirs(path);
 
     char name[256];
     vfs_node_t *dir = vfs_resolve_parent(path, name);
     if (!dir || !name[0]) return -1;
 
-    /* Create or overwrite */
+    
     vfs_node_t *node = vfs_resolve(path);
     if (!node) {
         if (vfs_create(dir, name, (uint16_t)mode) != 0) return -1;
@@ -85,7 +76,7 @@ static int write_file(const char *path, const uint8_t *data, uint32_t size, uint
     return 0;
 }
 
-/* ── kpkg_install ───────────────────────────────────────────────────────── */
+
 
 int kpkg_install(const char *pkgpath, kpkg_print_fn print) {
     vfs_node_t *node = vfs_resolve(pkgpath);
@@ -96,13 +87,13 @@ int kpkg_install(const char *pkgpath, kpkg_print_fn print) {
         return -1;
     }
 
-    /* Read the entire package into memory */
+    
     uint32_t pkgsz = node->size;
     uint8_t *buf = (uint8_t *)kmalloc(pkgsz);
     if (!buf) { kpkg_puts(print, "kpkg: sem memoria\n"); return -1; }
     vfs_read(node, 0, pkgsz, buf);
 
-    /* Validate header */
+    
     kpkg_hdr_t *hdr = (kpkg_hdr_t *)buf;
     if (hdr->magic[0] != 'K' || hdr->magic[1] != 'P' ||
         hdr->magic[2] != 'K' || hdr->magic[3] != 'G') {
@@ -120,7 +111,7 @@ int kpkg_install(const char *pkgpath, kpkg_print_fn print) {
     kpkg_putu(print, hdr->n_files);
     kpkg_puts(print, " arquivos...\n");
 
-    /* Extract entries */
+    
     uint32_t off = sizeof(kpkg_hdr_t);
     uint32_t n;
     for (n = 0; n < hdr->n_files; n++) {
@@ -132,9 +123,9 @@ int kpkg_install(const char *pkgpath, kpkg_print_fn print) {
         const uint8_t *data = buf + off;
         off += ent->size;
 
-        /* Create directory or file */
+        
         if (ent->path[strlen(ent->path) - 1] == '/') {
-            /* It's a directory */
+            
             mkdirs(ent->path);
         } else {
             if (write_file(ent->path, data, ent->size, ent->mode) != 0) {
@@ -147,9 +138,9 @@ int kpkg_install(const char *pkgpath, kpkg_print_fn print) {
 
     kfree(buf);
 
-    /* Record in package database */
+    
     {
-        /* Extract package name from path: /packages/firefox.kpkg → "firefox" */
+        
         const char *base = pkgpath;
         const char *t = pkgpath;
         while (*t) { if (*t == '/') base = t + 1; t++; }
@@ -157,7 +148,7 @@ int kpkg_install(const char *pkgpath, kpkg_print_fn print) {
         char dbpath[256];
         strcpy(dbpath, KPKG_DB_DIR "/");
         strncat(dbpath, base, 200);
-        /* Strip .kpkg extension */
+        
         int dl = strlen(dbpath);
         if (dl > 5 && strcmp(dbpath + dl - 5, ".kpkg") == 0)
             dbpath[dl - 5] = 0;
@@ -175,7 +166,7 @@ int kpkg_install(const char *pkgpath, kpkg_print_fn print) {
     return 0;
 }
 
-/* ── kpkg_list ──────────────────────────────────────────────────────────── */
+
 
 void kpkg_list(kpkg_print_fn print) {
     vfs_node_t *db = vfs_resolve(KPKG_DB_DIR);
@@ -192,7 +183,7 @@ void kpkg_list(kpkg_print_fn print) {
     }
 }
 
-/* ── kpkg_search ────────────────────────────────────────────────────────── */
+
 
 void kpkg_search(const char *name, kpkg_print_fn print) {
     vfs_node_t *pkgdir = vfs_resolve(KPKG_PKG_DIR);
@@ -203,7 +194,7 @@ void kpkg_search(const char *name, kpkg_print_fn print) {
     dirent_t *e;
     while ((e = vfs_readdir(pkgdir, i++)) != 0) {
         if (!name || !name[0] || strstr(e->name, name)) {
-            /* Strip .kpkg suffix for display */
+            
             char dname[256];
             strncpy(dname, e->name, 255);
             int dl = strlen(dname);
@@ -217,7 +208,7 @@ void kpkg_search(const char *name, kpkg_print_fn print) {
     }
 }
 
-/* ── kpkg_create (stub — used by host scripts, not the kernel) ─────────── */
+
 int kpkg_create(const char *srcdir, const char *outpath, kpkg_print_fn print) {
     (void)srcdir; (void)outpath;
     kpkg_puts(print, "kpkg create: use scripts/mkpkg.sh no host\n");

@@ -1,9 +1,3 @@
-/*
- * Linux x86_64 syscall compatibility layer for Krypx.
- * Handles syscall instruction ABI (not int $0x80).
- * Covers the ~160 syscalls needed by musl/glibc statically-linked binaries
- * and the Firefox ESR startup path.
- */
 
 #include "linux_compat64.h"
 #include <io.h>
@@ -21,7 +15,7 @@
 #include <lib/string.h>
 #include <types.h>
 
-/* ── errno values ────────────────────────────────────────────────────────── */
+
 #define EPERM     1
 #define ENOENT    2
 #define ESRCH     3
@@ -56,7 +50,7 @@
 
 #define ERR(e) (-(int64_t)(e))
 
-/* ── Linux x86_64 syscall numbers ────────────────────────────────────────── */
+
 #define SYS64_READ          0
 #define SYS64_WRITE         1
 #define SYS64_OPEN          2
@@ -186,7 +180,7 @@
 #define SYS64_EPOLL_CREATE     213
 #define SYS64_MEMBARRIER       324
 
-/* ── Linux stat structs ──────────────────────────────────────────────────── */
+
 typedef struct {
     uint64_t st_dev;
     uint64_t st_ino;
@@ -272,20 +266,20 @@ typedef struct {
 } linux64_iovec_t;
 
 typedef struct {
-    uint64_t msg_name;        /* +0  */
-    uint32_t msg_namelen;     /* +8  */
-    uint32_t __pad1;          /* +12 */
-    uint64_t msg_iov;         /* +16 */
-    uint64_t msg_iovlen;      /* +24 */
-    uint64_t msg_control;     /* +32 */
-    uint64_t msg_controllen;  /* +40 */
-    int32_t  msg_flags;       /* +48 */
+    uint64_t msg_name;        
+    uint32_t msg_namelen;     
+    uint32_t __pad1;          
+    uint64_t msg_iov;         
+    uint64_t msg_iovlen;      
+    uint64_t msg_control;     
+    uint64_t msg_controllen;  
+    int32_t  msg_flags;       
 } linux64_msghdr_t;
 
-/* ── AT_FDCWD ────────────────────────────────────────────────────────────── */
+
 #define AT_FDCWD  ((int64_t)-100)
 
-/* ── MAP flags ───────────────────────────────────────────────────────────── */
+
 #define MAP_SHARED      0x01
 #define MAP_PRIVATE     0x02
 #define MAP_FIXED       0x10
@@ -296,26 +290,26 @@ typedef struct {
 #define PROT_WRITE      2
 #define PROT_EXEC       4
 
-/* ── ARCH_PRCTL codes ────────────────────────────────────────────────────── */
+
 #define ARCH_SET_GS  0x1001
 #define ARCH_SET_FS  0x1002
 #define ARCH_GET_FS  0x1003
 #define ARCH_GET_GS  0x1004
 
-/* ── FUTEX ops ───────────────────────────────────────────────────────────── */
+
 #define FUTEX_WAIT        0
 #define FUTEX_WAKE        1
 #define FUTEX_PRIVATE_FLAG 128
 #define FUTEX_WAIT_PRIVATE (FUTEX_WAIT | FUTEX_PRIVATE_FLAG)
 #define FUTEX_WAKE_PRIVATE (FUTEX_WAKE | FUTEX_PRIVATE_FLAG)
 
-/* ── CLOCK ids ───────────────────────────────────────────────────────────── */
+
 #define CLOCK_REALTIME   0
 #define CLOCK_MONOTONIC  1
 #define CLOCK_PROCESS_CPUTIME_ID 2
 #define CLOCK_THREAD_CPUTIME_ID  3
 
-/* ── F_* fcntl commands ──────────────────────────────────────────────────── */
+
 #define F_DUPFD       0
 #define F_GETFD       1
 #define F_SETFD       2
@@ -326,12 +320,12 @@ typedef struct {
 #define FD_CLOEXEC    1
 #define O_NONBLOCK  2048
 
-/* ── RLIMIT resource ids ─────────────────────────────────────────────────── */
+
 #define RLIMIT_NOFILE 7
 #define RLIMIT_STACK  3
 #define RLIMIT_AS     9
 
-/* ── serial debug helper ─────────────────────────────────────────────────── */
+
 static void ser64(const char *s) {
     while (*s) { while (!(inb(0x3FD)&0x20)){} outb(0x3F8,(uint8_t)*s++); }
 }
@@ -345,10 +339,10 @@ static void ser64_hex(uint64_t v) {
     ser64(b);
 }
 
-/* ── Heap base for Linux processes ──────────────────────────────────────── */
+
 #define LX64_HEAP_BASE  0x10000000ULL
 
-/* ── fill stat ───────────────────────────────────────────────────────────── */
+
 static void fill_stat64(linux64_stat_t *st, vfs_node_t *node) {
     memset(st, 0, sizeof(*st));
     st->st_ino   = node->inode;
@@ -367,9 +361,9 @@ static void fill_stat64(linux64_stat_t *st, vfs_node_t *node) {
     }
 }
 
-/* ── file operations ─────────────────────────────────────────────────────── */
 
-/* Read one byte from a term_pipe (non-blocking: returns 0 if empty) */
+
+
 static int term_pipe_read_byte(term_pipe_t *p, char *out) {
     if (!p || p->len == 0) return 0;
     *out = (char)p->buf[p->tail];
@@ -382,14 +376,14 @@ static int64_t lx64_read(uint64_t fd, char *buf, uint64_t count) {
     process_t *p = process_current();
     if (fd == 0) {
         if (p && p->stdin_pipe) {
-            /* Block until data available */
+            
             while (p->stdin_pipe->len == 0) {
                 p->wait_stdin = true;
                 p->state = PROC_BLOCKED;
                 schedule();
                 p->wait_stdin = false;
             }
-            /* Read up to count bytes (stop at newline) */
+            
             uint64_t i;
             for (i = 0; i < count; i++) {
                 char c;
@@ -399,7 +393,7 @@ static int64_t lx64_read(uint64_t fd, char *buf, uint64_t count) {
             }
             return (int64_t)i;
         }
-        /* Fallback: direct keyboard (non-piped processes) */
+        
         uint64_t i;
         for (i = 0; i < count; i++) {
             char c = keyboard_read();
@@ -420,7 +414,7 @@ static int64_t lx64_write(uint64_t fd, const char *buf, uint64_t count) {
     process_t *p = process_current();
     if (fd == 1 || fd == 2) {
         if (p && p->stdout_pipe) {
-            /* Route output to the GUI terminal pipe */
+            
             uint64_t i;
             for (i = 0; i < count; i++) {
                 if (p->stdout_pipe->len < TERM_PIPE_SIZE) {
@@ -431,7 +425,7 @@ static int64_t lx64_write(uint64_t fd, const char *buf, uint64_t count) {
             }
             return (int64_t)count;
         }
-        /* Fallback: VGA text + serial debug */
+        
         uint64_t i;
         for (i = 0; i < count; i++) vga_putchar(buf[i]);
         for (i = 0; i < count && i < 256; i++) {
@@ -620,7 +614,7 @@ static int64_t lx64_writev(uint64_t fd, linux64_iovec_t *iov, uint64_t iovcnt) {
     return total;
 }
 
-/* ── memory ──────────────────────────────────────────────────────────────── */
+
 
 static int64_t lx64_brk(uint64_t addr) {
     process_t *p = process_current();
@@ -662,12 +656,12 @@ static int64_t lx64_mmap(uint64_t addr, uint64_t length, uint64_t prot,
         base = addr & ~0xFFFULL;
     } else {
         base = g_mmap_next;
-        g_mmap_next += pages * 0x1000ULL + 0x1000ULL; /* guard page */
+        g_mmap_next += pages * 0x1000ULL + 0x1000ULL; 
     }
 
     process_t *p = process_current();
 
-    /* Map framebuffer device */
+    
     if (fd >= 3 && p && (uint64_t)fd < MAX_FDS && p->fds[fd]) {
         vfs_node_t *node = p->fds[fd];
         if (node->flags == VFS_CHARDEV && node->impl == 0xFB0) {
@@ -683,7 +677,7 @@ static int64_t lx64_mmap(uint64_t addr, uint64_t length, uint64_t prot,
         }
     }
 
-    /* File-backed mmap */
+    
     if (fd >= 3 && p && (uint64_t)fd < MAX_FDS && p->fds[fd] &&
         !(flags & MAP_ANONYMOUS)) {
         uint64_t i;
@@ -702,7 +696,7 @@ static int64_t lx64_mmap(uint64_t addr, uint64_t length, uint64_t prot,
         return (int64_t)base;
     }
 
-    /* Anonymous mmap */
+    
     uint64_t i;
     for (i = 0; i < pages; i++) {
         uint64_t phys = pmm_alloc_page();
@@ -722,7 +716,7 @@ static int64_t lx64_munmap(uint64_t addr, uint64_t length) {
 
 static int64_t lx64_mprotect(uint64_t addr, uint64_t len, uint64_t prot) {
     (void)prot;
-    /* Re-map with appropriate flags */
+    
     process_t *p = process_current();
     if (!p) return 0;
     uint64_t base  = addr & ~0xFFFULL;
@@ -741,7 +735,7 @@ static int64_t lx64_mremap(uint64_t old_addr, uint64_t old_size,
                              uint64_t new_size, uint64_t flags) {
     (void)flags;
     if (new_size <= old_size) return (int64_t)old_addr;
-    /* Allocate new region and copy */
+    
     int64_t new_addr = lx64_mmap(0, new_size, PROT_READ|PROT_WRITE,
                                    MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
     if (new_addr < 0) return new_addr;
@@ -750,7 +744,7 @@ static int64_t lx64_mremap(uint64_t old_addr, uint64_t old_size,
     return new_addr;
 }
 
-/* ── process ─────────────────────────────────────────────────────────────── */
+
 
 static int64_t lx64_getpid(void) {
     process_t *p = process_current();
@@ -781,11 +775,11 @@ static int64_t lx64_exit(int64_t code) {
     return 0;
 }
 
-/* ── extern globals from syscall_entry.asm and switch.asm ─────────────────── */
+
 extern uint64_t g_syscall_user_rsp;
 extern void fork_return_to_user(void);
 
-/* ── CLONE flags ─────────────────────────────────────────────────────────── */
+
 #define CLONE_VM             0x00000100ULL
 #define CLONE_FILES          0x00000400ULL
 #define CLONE_THREAD         0x00010000ULL
@@ -855,7 +849,7 @@ static int64_t lx64_wait4(syscall64_frame_t *f, int64_t pid, int32_t *status,
         if (!child || child->parent != parent) return ERR(ECHILD);
         if (child->state == PROC_ZOMBIE) goto reap;
     } else {
-        /* pid == -1: look for any zombie child */
+        
         uint32_t i;
         for (i = 0; i < parent->nchildren; i++) {
             process_t *c = process_get(parent->children[i]);
@@ -864,12 +858,12 @@ static int64_t lx64_wait4(syscall64_frame_t *f, int64_t pid, int32_t *status,
         if (parent->nchildren == 0) return ERR(ECHILD);
     }
 
-    /* Block until a child exits */
+    
     parent->waiting_child = true;
     parent->state = PROC_BLOCKED;
     schedule();
 
-    /* Woken by process_child_exited() — find the zombie */
+    
     if (pid > 0) {
         child = process_get((uint32_t)pid);
     } else {
@@ -910,12 +904,12 @@ static int64_t lx64_execve(syscall64_frame_t *f, const char *path,
     process_t *p = process_current();
     if (!p) { kfree(data); return ERR(ESRCH); }
 
-    /* Tear down old user address space */
+    
     vmm_free_user_pages(p->page_dir);
     p->heap_start = 0;
     p->heap_end   = 0;
 
-    /* Load new image into current process */
+    
     elf_load_result_t res;
     int r = elf_load(p, data, sz, &res);
     kfree(data);
@@ -925,7 +919,7 @@ static int64_t lx64_execve(syscall64_frame_t *f, const char *path,
     p->heap_end    = res.heap_base;
     p->compat_mode = res.is_linux_compat ? COMPAT_LINUX : COMPAT_NONE;
 
-    /* Redirect sysretq to new entry point with new stack */
+    
     f->rcx = res.entry_point;
     f->r11 = 0x202;
     g_syscall_user_rsp = res.user_stack_top;
@@ -933,7 +927,7 @@ static int64_t lx64_execve(syscall64_frame_t *f, const char *path,
     ser64("[LX64] execve -> entry=");
     ser64_hex(res.entry_point);
     ser64("\r\n");
-    return 0;  /* parent's sysretq goes to new entry */
+    return 0;  
 }
 
 static int64_t lx64_kill(int64_t pid, int64_t sig) {
@@ -941,7 +935,7 @@ static int64_t lx64_kill(int64_t pid, int64_t sig) {
     return 0;
 }
 
-/* ── time ────────────────────────────────────────────────────────────────── */
+
 
 static int64_t lx64_clock_gettime(uint64_t clk, linux64_timespec_t *ts) {
     if (!ts) return ERR(EFAULT);
@@ -970,7 +964,7 @@ static int64_t lx64_nanosleep(linux64_timespec_t *req, linux64_timespec_t *rem) 
     return 0;
 }
 
-/* ── arch_prctl ──────────────────────────────────────────────────────────── */
+
 
 static int64_t lx64_arch_prctl(uint64_t code, uint64_t addr) {
     switch (code) {
@@ -996,7 +990,7 @@ static int64_t lx64_arch_prctl(uint64_t code, uint64_t addr) {
     }
 }
 
-/* ── futex ───────────────────────────────────────────────────────────────── */
+
 
 static int64_t lx64_futex(uint32_t *uaddr, int64_t op, uint32_t val,
                            linux64_timespec_t *timeout, uint32_t *uaddr2, uint32_t val3) {
@@ -1016,13 +1010,13 @@ static int64_t lx64_futex(uint32_t *uaddr, int64_t op, uint32_t val,
     return 0;
 }
 
-/* ── set_tid_address ─────────────────────────────────────────────────────── */
+
 static int64_t lx64_set_tid_address(uint64_t *tidptr) {
     (void)tidptr;
     return lx64_getpid();
 }
 
-/* ── sysinfo / uname / rlimit ────────────────────────────────────────────── */
+
 
 static int64_t lx64_sysinfo(linux64_sysinfo_t *info) {
     if (!info) return ERR(EFAULT);
@@ -1056,7 +1050,7 @@ static int64_t lx64_getrlimit(uint64_t resource, linux64_rlimit_t *rl) {
     return 0;
 }
 
-/* ── directory ops ───────────────────────────────────────────────────────── */
+
 
 static int64_t lx64_getcwd(char *buf, uint64_t size) {
     if (!buf || size < 2) return ERR(EINVAL);
@@ -1102,7 +1096,7 @@ static int64_t lx64_rename(const char *old, const char *newp) {
     return ERR(ENOSYS);
 }
 
-/* ── ioctl ───────────────────────────────────────────────────────────────── */
+
 
 #define TIOCGWINSZ  0x5413
 #define TIOCSWINSZ  0x5414
@@ -1129,14 +1123,14 @@ static int64_t lx64_ioctl(uint64_t fd, uint64_t req, uint64_t arg) {
     return ERR(ENOTTY);
 }
 
-/* ── poll / select ───────────────────────────────────────────────────────── */
+
 
 static int64_t lx64_poll(linux64_pollfd_t *fds, uint64_t nfds, int64_t timeout) {
     (void)fds; (void)nfds; (void)timeout;
     return 0;
 }
 
-/* ── getrandom ───────────────────────────────────────────────────────────── */
+
 
 static uint64_t lx64_rand_state = 0xDEADBEEF1234ABCDULL;
 
@@ -1153,7 +1147,7 @@ static int64_t lx64_getrandom(char *buf, uint64_t count, uint64_t flags) {
     return (int64_t)count;
 }
 
-/* ── socket ──────────────────────────────────────────────────────────────── */
+
 
 #define AF_UNIX_LX  1
 #define AF_INET_LX  2
@@ -1171,7 +1165,7 @@ typedef struct {
     char     sun_path[108];
 } linux64_sockaddr_un_t;
 
-/* Unix socket table (simple in-memory pipe implementation) */
+
 #define MAX_UNIX_SOCKETS 16
 #define UNIX_BUF_SIZE    65536
 
@@ -1183,25 +1177,25 @@ typedef struct {
     uint8_t  buf[UNIX_BUF_SIZE];
     uint32_t buf_read;
     uint32_t buf_write;
-    int      peer;          /* index of connected peer */
+    int      peer;          
 } unix_sock_t;
 
 static unix_sock_t unix_socks[MAX_UNIX_SOCKETS];
 
-/* All sockets: we track whether it's Unix or INET in a type table */
+
 #define KRYPX_SOCK_FREE   0
 #define KRYPX_SOCK_UNIX   1
 #define KRYPX_SOCK_INET   2
 
 typedef struct {
     uint8_t type;
-    int     idx;  /* index into unix_socks[] or inet socket fd */
+    int     idx;  
 } krypx_sock_t;
 
 #define MAX_KRYPX_SOCKETS 32
 static krypx_sock_t ksocks[MAX_KRYPX_SOCKETS];
 
-/* ── kernel service sockets (X11 server, etc.) ───────────────────────────── */
+
 #define MAX_KERNEL_SERVICES 4
 #define KSVC_BUF 65536
 #define PEER_KSVC_BASE  0x8000
@@ -1209,16 +1203,16 @@ static krypx_sock_t ksocks[MAX_KRYPX_SOCKETS];
 typedef struct {
     bool     active;
     char     path[108];
-    uint8_t  rx[KSVC_BUF];   /* client → server */
+    uint8_t  rx[KSVC_BUF];   
     uint32_t rx_rd, rx_wr;
-    uint8_t  tx[KSVC_BUF];   /* server → client */
+    uint8_t  tx[KSVC_BUF];   
     uint32_t tx_rd, tx_wr;
-    int      client_uidx;    /* index into unix_socks[] of connected client, or -1 */
+    int      client_uidx;    
 } ksvc_t;
 
 static ksvc_t g_ksvcs[MAX_KERNEL_SERVICES];
 
-/* VFS node wrapper for a socket fd */
+
 static uint32_t sock_read_fn(vfs_node_t *node, uint32_t off, uint32_t sz, uint8_t *buf) {
     (void)off;
     int kidx = (int)node->impl;
@@ -1228,13 +1222,13 @@ static uint32_t sock_read_fn(vfs_node_t *node, uint32_t off, uint32_t sz, uint8_
     unix_sock_t *us = &unix_socks[ks->idx];
     if (!us->connected) return 0;
 
-    /* Reading from a kernel service: trigger X11 processing then drain tx ring */
+    
     if (us->peer >= PEER_KSVC_BASE) {
         int si = us->peer - PEER_KSVC_BASE;
-        /* Let X11 server process any pending requests before we return data */
+        
         extern void x11_server_process(int svc_idx);
         x11_server_process(si);
-        /* Drain from the unix_sock read buffer (written by lx64_ksvc_write) */
+        
         uint32_t avail = us->buf_write - us->buf_read;
         uint32_t n = (sz < avail) ? sz : avail;
         if (!n) return 0;
@@ -1259,7 +1253,7 @@ static uint32_t sock_write_fn(vfs_node_t *node, uint32_t off, uint32_t sz, const
     if (ks->type != KRYPX_SOCK_UNIX) return 0;
     unix_sock_t *us = &unix_socks[ks->idx];
 
-    /* Writing to a kernel service: put data into service rx ring */
+    
     if (us->peer >= PEER_KSVC_BASE) {
         int si = us->peer - PEER_KSVC_BASE;
         ksvc_t *svc = &g_ksvcs[si];
@@ -1270,7 +1264,7 @@ static uint32_t sock_write_fn(vfs_node_t *node, uint32_t off, uint32_t sz, const
         return n;
     }
 
-    /* Normal unix socket: write to peer's buffer */
+    
     if (us->peer < 0 || (uint32_t)us->peer >= MAX_UNIX_SOCKETS) return 0;
     unix_sock_t *peer = &unix_socks[us->peer];
     uint32_t space = UNIX_BUF_SIZE - (peer->buf_write - peer->buf_read);
@@ -1292,7 +1286,7 @@ static int alloc_ksock(void) {
 
 static int64_t lx64_socket(uint64_t domain, uint64_t type, uint64_t proto) {
     (void)proto;
-    uint64_t base_type = type & ~(uint64_t)(SOCK_NONBLOCK | 524288 /*SOCK_CLOEXEC*/);
+    uint64_t base_type = type & ~(uint64_t)(SOCK_NONBLOCK | 524288 );
 
     process_t *p = process_current();
     if (!p) return ERR(ENOMEM);
@@ -1323,9 +1317,9 @@ static int64_t lx64_socket(uint64_t domain, uint64_t type, uint64_t proto) {
         unix_socks[uidx].peer = -1;
         ksocks[kidx].idx = uidx;
     } else {
-        /* Delegate to existing INET socket layer */
+        
         ksocks[kidx].type = KRYPX_SOCK_INET;
-        /* stub: return the fd with no real backing */
+        
     }
 
     p->fds[fd]        = &sock_nodes[kidx];
@@ -1333,7 +1327,7 @@ static int64_t lx64_socket(uint64_t domain, uint64_t type, uint64_t proto) {
     return (int64_t)fd;
 }
 
-/* Find listening Unix socket by path */
+
 static int find_unix_listener(const char *path) {
     int i;
     for (i = 0; i < MAX_UNIX_SOCKETS; i++) {
@@ -1376,11 +1370,11 @@ static int64_t lx64_connect(uint64_t sockfd, linux64_sockaddr_t *addr, uint64_t 
     if (ksocks[kidx].type != KRYPX_SOCK_UNIX) return ERR(ECONNREFUSED);
     linux64_sockaddr_un_t *un = (linux64_sockaddr_un_t*)addr;
 
-    /* Check kernel service endpoints first */
+    
     {
         int si;
         const char *spath = un->sun_path;
-        /* handle abstract namespace (starts with \0) */
+        
         if (spath[0] == '\0') spath++;
         for (si = 0; si < MAX_KERNEL_SERVICES; si++) {
             if (g_ksvcs[si].active && strcmp(g_ksvcs[si].path, spath) == 0) {
@@ -1395,12 +1389,12 @@ static int64_t lx64_connect(uint64_t sockfd, linux64_sockaddr_t *addr, uint64_t 
 
     int server = find_unix_listener(un->sun_path);
     if (server < 0) {
-        /* also try abstract namespace */
+        
         const char *apath = un->sun_path;
         if (apath[0] == '\0') server = find_unix_listener(apath + 1);
     }
     if (server < 0) return ERR(ECONNREFUSED);
-    /* Connect: set up bidirectional link */
+    
     unix_socks[ksocks[kidx].idx].connected = true;
     unix_socks[ksocks[kidx].idx].peer      = server;
     unix_socks[server].connected = true;
@@ -1438,7 +1432,7 @@ static int64_t lx64_getsockname(uint64_t sockfd, linux64_sockaddr_t *addr, uint6
     return 0;
 }
 
-/* ── sendmsg / recvmsg ───────────────────────────────────────────────────── */
+
 
 static int64_t lx64_sendmsg(uint64_t sockfd, linux64_msghdr_t *msg, uint64_t flags) {
     (void)flags;
@@ -1462,7 +1456,7 @@ static int64_t lx64_recvmsg(uint64_t sockfd, linux64_msghdr_t *msg, uint64_t fla
     if (!msg) return ERR(EFAULT);
     linux64_iovec_t *iov = (linux64_iovec_t *)(uintptr_t)msg->msg_iov;
     uint64_t iovcnt = msg->msg_iovlen;
-    /* Zero out control length — we don't support ancillary data */
+    
     if (msg->msg_controllen) msg->msg_controllen = 0;
     if (!iov || !iovcnt) return 0;
     int64_t total = 0;
@@ -1472,12 +1466,12 @@ static int64_t lx64_recvmsg(uint64_t sockfd, linux64_msghdr_t *msg, uint64_t fla
         int64_t r = lx64_read(sockfd, (char *)(uintptr_t)iov[i].iov_base, iov[i].iov_len);
         if (r < 0) return (total > 0) ? total : r;
         total += r;
-        if ((uint64_t)r < iov[i].iov_len) break; /* partial read — stop */
+        if ((uint64_t)r < iov[i].iov_len) break; 
     }
     return total;
 }
 
-/* ── socketpair ──────────────────────────────────────────────────────────── */
+
 
 static int64_t lx64_socketpair(uint64_t domain, uint64_t type, uint64_t proto, int32_t *fds) {
     (void)domain; (void)proto;
@@ -1488,16 +1482,16 @@ static int64_t lx64_socketpair(uint64_t domain, uint64_t type, uint64_t proto, i
     uint64_t base_type = type & ~(uint64_t)(SOCK_NONBLOCK | 524288);
     if (base_type != SOCK_STREAM_LX && base_type != SOCK_DGRAM_LX) return ERR(EAFNOSUPPORT);
 
-    /* Allocate two ksocks */
+    
     int k0 = alloc_ksock();
     if (k0 < 0) return ERR(ENFILE);
 
-    /* Temporarily mark k0 used so alloc_ksock won't return it again */
+    
     ksocks[k0].type = KRYPX_SOCK_UNIX;
     int k1 = alloc_ksock();
     if (k1 < 0) { ksocks[k0].type = KRYPX_SOCK_FREE; return ERR(ENFILE); }
 
-    /* Allocate two unix_sock slots */
+    
     int u0 = -1, u1 = -1;
     uint32_t j;
     for (j = 0; j < MAX_UNIX_SOCKETS; j++) {
@@ -1519,7 +1513,7 @@ static int64_t lx64_socketpair(uint64_t domain, uint64_t type, uint64_t proto, i
     unix_socks[u0].used = true;  unix_socks[u0].connected = true; unix_socks[u0].peer = u1;
     unix_socks[u1].used = true;  unix_socks[u1].connected = true; unix_socks[u1].peer = u0;
 
-    /* Set up ksocks and vfs nodes */
+    
     ksocks[k0].type = KRYPX_SOCK_UNIX; ksocks[k0].idx = u0;
     ksocks[k1].type = KRYPX_SOCK_UNIX; ksocks[k1].idx = u1;
 
@@ -1533,7 +1527,7 @@ static int64_t lx64_socketpair(uint64_t domain, uint64_t type, uint64_t proto, i
     sock_nodes[k1].read  = sock_read_fn; sock_nodes[k1].write = sock_write_fn;
     memcpy(sock_nodes[k1].name, "socket", 7);
 
-    /* Assign file descriptors */
+    
     int fd0 = -1, fd1 = -1;
     for (j = 3; j < MAX_FDS; j++) { if (!p->fds[j]) { fd0 = (int)j; break; } }
     for (j = fd0 + 1; (uint32_t)j < MAX_FDS; j++) { if (!p->fds[j]) { fd1 = (int)j; break; } }
@@ -1549,7 +1543,7 @@ static int64_t lx64_socketpair(uint64_t domain, uint64_t type, uint64_t proto, i
     return 0;
 }
 
-/* ── pipe ────────────────────────────────────────────────────────────────── */
+
 
 #define PIPE_BUF_SIZE  4096
 typedef struct {
@@ -1593,7 +1587,7 @@ static int64_t lx64_pipe2(int32_t *fds, uint64_t flags) {
     if (pidx < 0) return ERR(ENFILE);
     int rfd = find_free_fd(p);
     if (rfd < 0) return ERR(EMFILE);
-    p->fds[rfd] = (vfs_node_t*)1; /* temporarily mark as used */
+    p->fds[rfd] = (vfs_node_t*)1; 
     int wfd = find_free_fd(p);
     p->fds[rfd] = 0;
     if (wfd < 0) return ERR(EMFILE);
@@ -1618,7 +1612,7 @@ static int64_t lx64_pipe2(int32_t *fds, uint64_t flags) {
     return 0;
 }
 
-/* ── misc ────────────────────────────────────────────────────────────────── */
+
 
 static int64_t lx64_sigaltstack(void *ss, void *oss) { (void)ss;(void)oss; return 0; }
 static int64_t lx64_rt_sigaction(int64_t sig, void *act, void *oact, uint64_t sz) {
@@ -1659,7 +1653,7 @@ static int64_t lx64_link(const char *o, const char *n) { (void)o;(void)n; return
 
 static int64_t lx64_memfd_create(const char *name, uint64_t flags) {
     (void)name;(void)flags;
-    /* Create an anonymous in-memory file */
+    
     process_t *p = process_current();
     if (!p) return ERR(ENOMEM);
     int fd = find_free_fd(p);
@@ -1674,7 +1668,7 @@ static int64_t lx64_memfd_create(const char *name, uint64_t flags) {
     return fd;
 }
 
-/* Register a path as a kernel service endpoint.  Returns service index or -1. */
+
 int lx64_register_kernel_service(const char *path) {
     int i;
     for (i = 0; i < MAX_KERNEL_SERVICES; i++) {
@@ -1689,7 +1683,7 @@ int lx64_register_kernel_service(const char *path) {
     return -1;
 }
 
-/* Read data sent by the connected client.  Returns bytes read. */
+
 int lx64_ksvc_read(int svc, void *buf, uint32_t max) {
     if (svc < 0 || svc >= MAX_KERNEL_SERVICES || !g_ksvcs[svc].active) return 0;
     ksvc_t *s = &g_ksvcs[svc];
@@ -1701,36 +1695,36 @@ int lx64_ksvc_read(int svc, void *buf, uint32_t max) {
     return (int)n;
 }
 
-/* Write data to the connected client.  Returns bytes written. */
+
 int lx64_ksvc_write(int svc, const void *buf, uint32_t len) {
     if (svc < 0 || svc >= MAX_KERNEL_SERVICES || !g_ksvcs[svc].active) return 0;
     ksvc_t *s = &g_ksvcs[svc];
 
-    /* Copy into tx ring buffer */
+    
     uint32_t space = KSVC_BUF - (s->tx_wr - s->tx_rd);
     uint32_t n = len < space ? len : space;
     memcpy(s->tx + (s->tx_wr % KSVC_BUF), buf, n);
     s->tx_wr += n;
 
-    /* Also push directly into the client unix_sock read buffer */
+    
     if (s->client_uidx >= 0 && s->client_uidx < MAX_UNIX_SOCKETS) {
         unix_sock_t *peer = &unix_socks[s->client_uidx];
         uint32_t pspace = UNIX_BUF_SIZE - (peer->buf_write - peer->buf_read);
         uint32_t pn = n < pspace ? n : pspace;
         memcpy(peer->buf + (peer->buf_write % UNIX_BUF_SIZE), buf, pn);
         peer->buf_write += pn;
-        s->tx_wr -= n;   /* already delivered directly */
+        s->tx_wr -= n;   
     }
     return (int)n;
 }
 
-/* True if a client is currently connected to this service. */
+
 bool lx64_ksvc_has_client(int svc) {
     if (svc < 0 || svc >= MAX_KERNEL_SERVICES) return false;
     return g_ksvcs[svc].active && g_ksvcs[svc].client_uidx >= 0;
 }
 
-/* ── eventfd ─────────────────────────────────────────────────────────────── */
+
 #define MAX_EVENTFDS 16
 #define EFD_SEMAPHORE 1
 #define EFD_NONBLOCK  0x800
@@ -1782,7 +1776,7 @@ static int64_t lx64_eventfd2(uint64_t initval, int flags) {
     return fd;
 }
 
-/* ── timerfd ─────────────────────────────────────────────────────────────── */
+
 #define MAX_TIMERFDS 8
 typedef struct {
     bool     used;
@@ -1879,7 +1873,7 @@ static int64_t lx64_timerfd_gettime(uint64_t fd, lx_itimerspec2_t *cur) {
     return 0;
 }
 
-/* ── epoll ────────────────────────────────────────────────────────────────── */
+
 #define EPOLLIN      0x001
 #define EPOLLOUT     0x004
 #define EPOLLERR     0x008
@@ -1967,33 +1961,33 @@ static int64_t lx64_epoll_ctl(uint64_t epfd, int op, uint64_t fd, epoll_event_t 
     return 0;
 }
 
-/* Check if an fd has data available for reading */
+
 static bool epoll_fd_readable(process_t *p, uint32_t fd) {
     if (!p) return false;
     if (fd == 0) return p->stdin_pipe && p->stdin_pipe->len > 0;
     if (fd >= MAX_FDS || !p->fds[fd]) return false;
     vfs_node_t *node = p->fds[fd];
     uint32_t impl = node->impl;
-    /* pipe */
+    
     if (node->flags == VFS_PIPE && impl < (uint32_t)MAX_PIPES)
         return (pipes[impl].wr - pipes[impl].rd) > 0;
-    /* eventfd */
+    
     if ((impl & 0xFF00) == 0xED00) {
         int ei = (int)(impl & 0xFF);
         return ei < MAX_EVENTFDS && eventfds[ei].value > 0;
     }
-    /* timerfd */
+    
     if ((impl & 0xFF00) == 0xFD00) {
         int ti = (int)(impl & 0xFF);
         if (ti >= MAX_TIMERFDS || !timerfds[ti].armed) return false;
         return (timer_get_ticks() - timerfds[ti].start_tick) >= timerfds[ti].initial_ms;
     }
-    /* unix socket */
+    
     if (node->flags == VFS_CHARDEV && impl < (uint32_t)MAX_KRYPX_SOCKETS) {
         krypx_sock_t *ks = &ksocks[impl];
         if (ks->type == KRYPX_SOCK_UNIX && ks->idx >= 0) {
             unix_sock_t *us = &unix_socks[ks->idx];
-            /* For kernel-service sockets (e.g. X11), process pending requests first */
+            
             if (us->connected && us->peer >= (int)PEER_KSVC_BASE) {
                 extern void x11_server_process(int svc_idx);
                 x11_server_process(us->peer - PEER_KSVC_BASE);
@@ -2017,7 +2011,7 @@ static int64_t lx64_epoll_wait(uint64_t epfd, epoll_event_t *evs, int maxevents,
         int nready = 0, i;
         for (i = 0; i < es->nwatches && nready < maxevents; i++) {
             bool in  = (es->watches[i].events & EPOLLIN)  && epoll_fd_readable(p, es->watches[i].fd);
-            bool out = !!(es->watches[i].events & EPOLLOUT); /* our buffers are always writable */
+            bool out = !!(es->watches[i].events & EPOLLOUT); 
             if (in || out) {
                 evs[nready].events = (in ? (uint32_t)EPOLLIN : 0u) | (out ? (uint32_t)EPOLLOUT : 0u);
                 evs[nready].data   = es->watches[i].data;
@@ -2031,7 +2025,7 @@ static int64_t lx64_epoll_wait(uint64_t epfd, epoll_event_t *evs, int maxevents,
     }
 }
 
-/* ── inotify (stub) ──────────────────────────────────────────────────────── */
+
 static vfs_node_t g_inotify_node;
 static uint32_t inotify_noop_read(vfs_node_t *n, uint32_t off, uint32_t sz, uint8_t *buf)
 { (void)n;(void)off;(void)sz;(void)buf; return 0; }
@@ -2051,7 +2045,7 @@ static int64_t lx64_inotify_init1(int flags) {
     return fd;
 }
 
-/* ── prctl ───────────────────────────────────────────────────────────────── */
+
 #define PR_SET_PDEATHSIG        1
 #define PR_SET_DUMPABLE         4
 #define PR_GET_DUMPABLE         3
@@ -2076,11 +2070,11 @@ static int64_t lx64_prctl(int opt, uint64_t a2, uint64_t a3, uint64_t a4, uint64
         return 0;
     }
     if (opt == PR_GET_DUMPABLE) return 1;
-    /* All others: silently succeed */
+    
     return 0;
 }
 
-/* ── setpgid / getpgid ───────────────────────────────────────────────────── */
+
 static int64_t lx64_setpgid(uint64_t pid, uint64_t pgid) { (void)pid;(void)pgid; return 0; }
 static int64_t lx64_getpgid(uint64_t pid) {
     (void)pid;
@@ -2088,7 +2082,7 @@ static int64_t lx64_getpgid(uint64_t pid) {
     return p ? (int64_t)p->pid : 1;
 }
 
-/* ── statfs ──────────────────────────────────────────────────────────────── */
+
 typedef struct {
     int64_t  f_type;
     int64_t  f_bsize;
@@ -2105,7 +2099,7 @@ static int64_t lx64_statfs(const char *path, linux64_statfs_t *st) {
     (void)path;
     if (!st) return ERR(EFAULT);
     memset(st, 0, sizeof(*st));
-    st->f_type    = 0x4d44;  /* MSDOS_SUPER_MAGIC (FAT32) */
+    st->f_type    = 0x4d44;  
     st->f_bsize   = 4096;
     st->f_blocks  = pmm_get_total_pages();
     st->f_bfree   = pmm_get_free_pages();
@@ -2114,7 +2108,7 @@ static int64_t lx64_statfs(const char *path, linux64_statfs_t *st) {
     return 0;
 }
 
-/* ── accept4 ─────────────────────────────────────────────────────────────── */
+
 static int64_t lx64_accept4(uint64_t sockfd, linux64_sockaddr_t *addr,
                               uint64_t *addrlen, int flags) {
     (void)addr; (void)addrlen; (void)flags;
@@ -2122,7 +2116,7 @@ static int64_t lx64_accept4(uint64_t sockfd, linux64_sockaddr_t *addr,
     return ERR(EAGAIN);
 }
 
-/* ── signalfd4 (stub) ────────────────────────────────────────────────────── */
+
 static vfs_node_t g_sigfd_node;
 static uint32_t sigfd_noop_read(vfs_node_t *n, uint32_t off, uint32_t sz, uint8_t *buf)
 { (void)n;(void)off;(void)sz;(void)buf; return 0; }
@@ -2131,7 +2125,7 @@ static int64_t lx64_signalfd4(int64_t fd, void *mask, uint64_t sigsz, int flags)
     (void)mask;(void)sigsz;(void)flags;
     process_t *p = process_current();
     if (!p) return ERR(ENOMEM);
-    if (fd >= 0) return fd; /* reuse existing fd */
+    if (fd >= 0) return fd; 
     int newfd = find_free_fd(p);
     if (newfd < 0) return ERR(EMFILE);
     memset(&g_sigfd_node, 0, sizeof(vfs_node_t));
@@ -2143,7 +2137,7 @@ static int64_t lx64_signalfd4(int64_t fd, void *mask, uint64_t sigsz, int flags)
     return newfd;
 }
 
-/* ── init ────────────────────────────────────────────────────────────────── */
+
 
 void linux_syscall64_init(void) {
     memset(ksocks, 0, sizeof(ksocks));
@@ -2156,13 +2150,13 @@ void linux_syscall64_init(void) {
     ser64("[LX64] syscall64 layer ready\r\n");
 }
 
-/* ── dispatcher ──────────────────────────────────────────────────────────── */
+
 
 void linux_syscall64_handler(syscall64_frame_t *f) {
     uint64_t nr = f->rax;
     int64_t ret = ERR(ENOSYS);
 
-    /* Trace first few calls */
+    
     {
         static uint32_t dbg = 0;
         if (dbg < 30) {
@@ -2175,7 +2169,7 @@ void linux_syscall64_handler(syscall64_frame_t *f) {
     }
 
     switch (nr) {
-    /* file I/O */
+    
     case SYS64_READ:       ret = lx64_read(f->rdi, (char*)(uintptr_t)f->rsi, f->rdx); break;
     case SYS64_WRITE:      ret = lx64_write(f->rdi, (const char*)(uintptr_t)f->rsi, f->rdx); break;
     case SYS64_OPEN:       ret = lx64_open_at(AT_FDCWD,(const char*)(uintptr_t)f->rdi,f->rsi,f->rdx); break;
@@ -2197,7 +2191,7 @@ void linux_syscall64_handler(syscall64_frame_t *f) {
     case SYS64_FSYNC:      ret = lx64_fsync(f->rdi); break;
     case SYS64_TRUNCATE:   ret = 0; break;
     case SYS64_FTRUNCATE:  ret = lx64_ftruncate(f->rdi,f->rsi); break;
-    case SYS64_GETDENTS:   /* fallthrough */
+    case SYS64_GETDENTS:   
     case SYS64_GETDENTS64: ret = lx64_getdents64(f->rdi,(linux64_dirent_t*)(uintptr_t)f->rsi,f->rdx); break;
     case SYS64_IOCTL:      ret = lx64_ioctl(f->rdi,f->rsi,f->rdx); break;
     case SYS64_POLL:       ret = lx64_poll((linux64_pollfd_t*)(uintptr_t)f->rdi,f->rsi,(int64_t)f->rdx); break;
@@ -2206,7 +2200,7 @@ void linux_syscall64_handler(syscall64_frame_t *f) {
     case SYS64_PIPE2:      ret = lx64_pipe2((int32_t*)(uintptr_t)f->rdi,f->rsi); break;
     case SYS64_MEMFD_CREATE: ret = lx64_memfd_create((const char*)(uintptr_t)f->rdi,f->rsi); break;
 
-    /* memory */
+    
     case SYS64_MMAP:       ret = lx64_mmap(f->rdi,f->rsi,f->rdx,f->r10,(int64_t)f->r8,f->r9); break;
     case SYS64_MPROTECT:   ret = lx64_mprotect(f->rdi,f->rsi,f->rdx); break;
     case SYS64_MUNMAP:     ret = lx64_munmap(f->rdi,f->rsi); break;
@@ -2214,7 +2208,7 @@ void linux_syscall64_handler(syscall64_frame_t *f) {
     case SYS64_MREMAP:     ret = lx64_mremap(f->rdi,f->rsi,f->rdx,f->r10); break;
     case SYS64_MADVISE:    ret = 0; break;
 
-    /* process */
+    
     case SYS64_GETPID:     ret = lx64_getpid(); break;
     case SYS64_GETTID:     ret = lx64_gettid(); break;
     case SYS64_GETPPID:    ret = lx64_getppid(); break;
@@ -2225,7 +2219,7 @@ void linux_syscall64_handler(syscall64_frame_t *f) {
     case SYS64_SETUID: case SYS64_SETGID: ret = 0; break;
     case SYS64_SETSID:     ret = lx64_setsid(); break;
     case SYS64_UMASK:      ret = lx64_umask(f->rdi); break;
-    case SYS64_EXIT:       /* fallthrough */
+    case SYS64_EXIT:       
     case SYS64_EXIT_GROUP: ret = lx64_exit((int64_t)f->rdi); break;
     case SYS64_FORK:       ret = lx64_fork(f); break;
     case SYS64_VFORK:      ret = lx64_fork(f); break;
@@ -2240,19 +2234,19 @@ void linux_syscall64_handler(syscall64_frame_t *f) {
     case SYS64_SCHED_YIELD: ret = 0; schedule(); break;
     case SYS64_SET_TID_ADDR: ret = lx64_set_tid_address((uint64_t*)(uintptr_t)f->rdi); break;
 
-    /* time */
+    
     case SYS64_CLOCK_GETTIME: ret = lx64_clock_gettime(f->rdi,(linux64_timespec_t*)(uintptr_t)f->rsi); break;
     case SYS64_CLOCK_GETRES:  ret = lx64_clock_gettime(f->rdi,(linux64_timespec_t*)(uintptr_t)f->rsi); break;
     case SYS64_GETTIMEOFDAY:  ret = lx64_gettimeofday((linux64_timeval_t*)(uintptr_t)f->rdi,(void*)(uintptr_t)f->rsi); break;
     case SYS64_NANOSLEEP:     ret = lx64_nanosleep((linux64_timespec_t*)(uintptr_t)f->rdi,(linux64_timespec_t*)(uintptr_t)f->rsi); break;
 
-    /* arch */
+    
     case SYS64_ARCH_PRCTL: ret = lx64_arch_prctl(f->rdi,f->rsi); break;
 
-    /* threading */
+    
     case SYS64_FUTEX:      ret = lx64_futex((uint32_t*)(uintptr_t)f->rdi,(int64_t)f->rsi,(uint32_t)f->rdx,(linux64_timespec_t*)(uintptr_t)f->r10,(uint32_t*)(uintptr_t)f->r8,(uint32_t)f->r9); break;
 
-    /* dir */
+    
     case SYS64_GETCWD:     ret = lx64_getcwd((char*)(uintptr_t)f->rdi,f->rsi); break;
     case SYS64_CHDIR:      ret = lx64_chdir((const char*)(uintptr_t)f->rdi); break;
     case SYS64_FCHDIR:     ret = 0; break;
@@ -2274,21 +2268,21 @@ void linux_syscall64_handler(syscall64_frame_t *f) {
     case SYS64_CREAT:      ret = lx64_open_at(AT_FDCWD,(const char*)(uintptr_t)f->rdi,O_CREAT|O_WRONLY|O_TRUNC,f->rsi); break;
     case SYS64_LINK:       ret = lx64_link((const char*)(uintptr_t)f->rdi,(const char*)(uintptr_t)f->rsi); break;
 
-    /* sysinfo */
+    
     case SYS64_UNAME:      ret = lx64_uname((linux64_utsname_t*)(uintptr_t)f->rdi); break;
     case SYS64_SYSINFO:    ret = lx64_sysinfo((linux64_sysinfo_t*)(uintptr_t)f->rdi); break;
     case SYS64_GETRLIMIT:  ret = lx64_getrlimit(f->rdi,(linux64_rlimit_t*)(uintptr_t)f->rsi); break;
-    case 98: /*getrusage*/ ret = 0; break;
+    case 98:  ret = 0; break;
 
-    /* signals */
+    
     case SYS64_RT_SIGACTION:  ret = lx64_rt_sigaction((int64_t)f->rdi,(void*)(uintptr_t)f->rsi,(void*)(uintptr_t)f->rdx,f->r10); break;
     case SYS64_RT_SIGPROCMASK: ret = lx64_rt_sigprocmask((int64_t)f->rdi,(void*)(uintptr_t)f->rsi,(void*)(uintptr_t)f->rdx,f->r10); break;
     case SYS64_RT_SIGRETURN:  ret = 0; break;
     case SYS64_SIGALTSTACK:   ret = lx64_sigaltstack((void*)(uintptr_t)f->rdi,(void*)(uintptr_t)f->rsi); break;
-    case 37: /*alarm*/  ret = 0; break;
-    case 34: /*pause*/  ret = 0; break;
+    case 37:   ret = 0; break;
+    case 34:   ret = 0; break;
 
-    /* sockets */
+    
     case SYS64_SOCKET:     ret = lx64_socket(f->rdi,f->rsi,f->rdx); break;
     case SYS64_CONNECT:    ret = lx64_connect(f->rdi,(linux64_sockaddr_t*)(uintptr_t)f->rsi,f->rdx); break;
     case SYS64_BIND:       ret = lx64_bind(f->rdi,(linux64_sockaddr_t*)(uintptr_t)f->rsi,f->rdx); break;
@@ -2301,60 +2295,60 @@ void linux_syscall64_handler(syscall64_frame_t *f) {
     case SYS64_GETSOCKOPT: ret = 0; break;
     case SYS64_GETSOCKNAME: ret = lx64_getsockname(f->rdi,(linux64_sockaddr_t*)(uintptr_t)f->rsi,(uint64_t*)(uintptr_t)f->rdx); break;
     case SYS64_GETPEERNAME: ret = 0; break;
-    case 53: /* socketpair */ ret = lx64_socketpair(f->rdi,f->rsi,f->rdx,(int32_t*)(uintptr_t)f->r10); break;
+    case 53:  ret = lx64_socketpair(f->rdi,f->rsi,f->rdx,(int32_t*)(uintptr_t)f->r10); break;
     case SYS64_SENDMSG:    ret = lx64_sendmsg(f->rdi,(linux64_msghdr_t*)(uintptr_t)f->rsi,f->rdx); break;
     case SYS64_RECVMSG:    ret = lx64_recvmsg(f->rdi,(linux64_msghdr_t*)(uintptr_t)f->rsi,f->rdx); break;
 
-    /* random */
+    
     case SYS64_GETRANDOM:  ret = lx64_getrandom((char*)(uintptr_t)f->rdi,f->rsi,f->rdx); break;
 
-    /* misc stubs */
-    case 100: /* times */   ret = 0; break;
+    
+    case 100:    ret = 0; break;
     case SYS64_EVENTFD:        ret = lx64_eventfd2(f->rdi,(int)f->rsi); break;
     case SYS64_EVENTFD2:       ret = lx64_eventfd2(f->rdi,(int)f->rsi); break;
     case SYS64_TIMERFD_CREATE: ret = lx64_timerfd_create((int)f->rdi,(int)f->rsi); break;
     case SYS64_TIMERFD_SETTIME: ret = lx64_timerfd_settime(f->rdi,(int)f->rsi,(lx_itimerspec2_t*)(uintptr_t)f->rdx,(lx_itimerspec2_t*)(uintptr_t)f->r10); break;
     case SYS64_TIMERFD_GETTIME: ret = lx64_timerfd_gettime(f->rdi,(lx_itimerspec2_t*)(uintptr_t)f->rsi); break;
-    case SYS64_EPOLL_CREATE:   /* fallthrough */
+    case SYS64_EPOLL_CREATE:   
     case SYS64_EPOLL_CREATE1:  ret = lx64_epoll_create1((int)f->rdi); break;
     case SYS64_EPOLL_CTL:      ret = lx64_epoll_ctl(f->rdi,(int)f->rsi,f->rdx,(epoll_event_t*)(uintptr_t)f->r10); break;
     case SYS64_EPOLL_WAIT:     ret = lx64_epoll_wait(f->rdi,(epoll_event_t*)(uintptr_t)f->rsi,(int)f->rdx,(int)f->r10); break;
-    case SYS64_INOTIFY_INIT:   /* fallthrough */
+    case SYS64_INOTIFY_INIT:   
     case SYS64_INOTIFY_INIT1:  ret = lx64_inotify_init1((int)f->rdi); break;
-    case SYS64_INOTIFY_ADD_WATCH: ret = 1; break; /* stub: return watch descriptor */
+    case SYS64_INOTIFY_ADD_WATCH: ret = 1; break; 
     case SYS64_INOTIFY_RM_WATCH:  ret = 0; break;
     case SYS64_ACCEPT4:        ret = lx64_accept4(f->rdi,(linux64_sockaddr_t*)(uintptr_t)f->rsi,(uint64_t*)(uintptr_t)f->rdx,(int)f->r10); break;
     case SYS64_SIGNALFD4:      ret = lx64_signalfd4((int64_t)f->rdi,(void*)(uintptr_t)f->rsi,f->rdx,(int)f->r10); break;
     case SYS64_STATFS:         ret = lx64_statfs((const char*)(uintptr_t)f->rdi,(linux64_statfs_t*)(uintptr_t)f->rsi); break;
     case SYS64_FSTATFS:        ret = lx64_statfs(0,(linux64_statfs_t*)(uintptr_t)f->rsi); break;
     case SYS64_MEMBARRIER:     ret = 0; break;
-    case 302: /* prlimit64 */  ret = 0; break;
-    case 149: /* mlock */      ret = 0; break;
-    case 150: /* munlock */    ret = 0; break;
-    case 334: /* rseq */         ret = ERR(ENOSYS); break;
-    case 435: /* clone3 */       ret = ERR(ENOSYS); break;
-    case 275: /* splice */       ret = ERR(ENOSYS); break;
-    case 285: /* fallocate */    ret = 0; break;
-    case 316: /* renameat2 */    ret = 0; break;
-    case 326: /* copy_file_range */ ret = ERR(ENOSYS); break;
-    case 139: /* sched_getparam */     ret = 0; break;
-    case 141: /* sched_setaffinity */  ret = 0; break;
-    case 142: /* sched_getaffinity */  ret = 0; break;
-    case 115: /* getgroups */          ret = 0; break;
-    case 116: /* setgroups */          ret = 0; break;
-    case 122: /* getpgrp */            ret = (int64_t)process_current()->pid; break;
-    case 124: /* getsid */             ret = (int64_t)process_current()->pid; break;
-    case 125: /* capget */             ret = 0; break;
-    case 126: /* capset */             ret = 0; break;
-    case 130: /* mknod */              ret = 0; break;
-    case 132: /* utime */              ret = 0; break;
-    case 133: /* mknodat */            ret = 0; break;
-    case 151: /* mlockall */           ret = 0; break;
-    case 152: /* munlockall */         ret = 0; break;
-    case 153: /* vhangup */            ret = 0; break;
-    case 154: /* modify_ldt */         ret = ERR(ENOSYS); break;
-    case 203: /* sched_setaffinity2 */ ret = 0; break;
-    case 204: /* sched_getaffinity2 */ ret = 0; break;
+    case 302:   ret = 0; break;
+    case 149:       ret = 0; break;
+    case 150:     ret = 0; break;
+    case 334:          ret = ERR(ENOSYS); break;
+    case 435:        ret = ERR(ENOSYS); break;
+    case 275:        ret = ERR(ENOSYS); break;
+    case 285:     ret = 0; break;
+    case 316:     ret = 0; break;
+    case 326:  ret = ERR(ENOSYS); break;
+    case 139:      ret = 0; break;
+    case 141:   ret = 0; break;
+    case 142:   ret = 0; break;
+    case 115:           ret = 0; break;
+    case 116:           ret = 0; break;
+    case 122:             ret = (int64_t)process_current()->pid; break;
+    case 124:              ret = (int64_t)process_current()->pid; break;
+    case 125:              ret = 0; break;
+    case 126:              ret = 0; break;
+    case 130:               ret = 0; break;
+    case 132:               ret = 0; break;
+    case 133:             ret = 0; break;
+    case 151:            ret = 0; break;
+    case 152:          ret = 0; break;
+    case 153:             ret = 0; break;
+    case 154:          ret = ERR(ENOSYS); break;
+    case 203:  ret = 0; break;
+    case 204:  ret = 0; break;
 
     default:
         ser64("[LX64] UNHANDLED syscall #");

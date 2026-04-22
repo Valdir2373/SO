@@ -342,7 +342,7 @@ void kernel_main(uint64_t magic, uint64_t mbi_addr) {
         vfs_init();
     }
 
-    /* Montar /dev e /proc sobre o VFS */
+    
     devfs_init();
     procfs_init();
     log_ok("devfs e procfs montados (/dev /proc)");
@@ -389,23 +389,23 @@ void kernel_main(uint64_t magic, uint64_t mbi_addr) {
     }
 
     
-    /* ACPI */
+    
     ser_puts("[DBG] acpi_init\r\n");
     acpi_init();
     if (acpi_available()) log_ok("ACPI: shutdown/reboot disponiveis");
 
-    /* AHCI/SATA */
+    
     ser_puts("[DBG] ahci_init\r\n");
     if (ahci_init()) {
         log_ok("AHCI: disco SATA detectado");
     }
 
-    /* USB HID */
+    
     ser_puts("[DBG] usb_hid_init\r\n");
     usb_hid_init();
     if (usb_kbd_available()) log_ok("USB: teclado HID detectado");
 
-    /* WiFi RTL8188EU */
+    
     ser_puts("[DBG] rtl8188eu_init\r\n");
     wifi_init();
     if (rtl8188eu_init()) {
@@ -433,15 +433,15 @@ void kernel_main(uint64_t magic, uint64_t mbi_addr) {
     }
 
     
-    /* Ler hora real do RTC do BIOS */
+    
     ser_puts("[DBG] rtc\r\n");
     {
         extern void timer_set_rtc_base(uint32_t h, uint32_t m, uint32_t s);
-        /* RTC via portas 0x70/0x71: registradores 0x00=seg, 0x02=min, 0x04=hora */
+        
         outb(0x70, 0x00); uint8_t sec_bcd = inb(0x71);
         outb(0x70, 0x02); uint8_t min_bcd = inb(0x71);
         outb(0x70, 0x04); uint8_t hr_bcd  = inb(0x71);
-        /* BCD → binário */
+        
         uint32_t ss = (sec_bcd >> 4)*10 + (sec_bcd & 0xF);
         uint32_t mm = (min_bcd >> 4)*10 + (min_bcd & 0xF);
         uint32_t hh = (hr_bcd  >> 4)*10 + (hr_bcd  & 0xF);
@@ -460,7 +460,7 @@ void kernel_main(uint64_t magic, uint64_t mbi_addr) {
     ser_puts("[SEC] Seguranca inicializada\r\n");
 
     
-    /* Primeiro boot: criar estrutura de diretórios no disco */
+    
     if (ide_disk_present() && vfs_root) {
         ser_puts("[DBG] first_boot\r\n");
         vfs_node_t *home = vfs_resolve("/home");
@@ -469,7 +469,7 @@ void kernel_main(uint64_t magic, uint64_t mbi_addr) {
         if (!bin)  { vfs_mkdir(vfs_root, "bin",   0755); }
         vfs_node_t *etc  = vfs_resolve("/etc");
         if (!etc)  { vfs_mkdir(vfs_root, "etc",   0755); }
-        /* /home/root */
+        
         vfs_node_t *hroot_par = vfs_resolve("/home");
         if (hroot_par) {
             vfs_node_t *hroot = vfs_resolve("/home/root");

@@ -1,5 +1,5 @@
 
-/* Network Manager — status de rede, WiFi scan/connect, DHCP */
+
 
 #include <apps/network_manager.h>
 #include <gui/window.h>
@@ -18,18 +18,18 @@
 
 static window_t *nm_win    = NULL;
 
-/* DHCP reconnect state */
+
 static char     nm_status[80]  = "";
 static bool     nm_connecting  = false;
 static uint32_t nm_connect_t   = 0;
 
-/* WiFi password input state */
-static bool     nm_pw_active   = false;    /* password input field active */
+
+static bool     nm_pw_active   = false;    
 static char     nm_pw_buf[64]  = "";
 static int      nm_pw_len      = 0;
-static int      nm_sel_idx     = -1;       /* selected network index */
+static int      nm_sel_idx     = -1;       
 
-/* ── helpers ─────────────────────────────────────────────────────────────── */
+
 
 static void ip_to_str(uint32_t ip, char *out) {
     uint8_t *b = (uint8_t *)&ip;
@@ -62,7 +62,7 @@ static void draw_row(int lx, int *cy, const char *label, const char *value,
     *cy += 18;
 }
 
-/* ── paint ───────────────────────────────────────────────────────────────── */
+
 
 static void nm_on_paint(window_t *win) {
     canvas_init(fb.backbuf, fb.width, fb.height, fb.pitch);
@@ -72,11 +72,11 @@ static void nm_on_paint(window_t *win) {
 
     canvas_fill_rect(bx, by, w, h, 0x001A2332);
 
-    /* ── Header ── */
+    
     canvas_fill_gradient(bx, by, w, 36, 0x00003D7A, 0x001A2332);
     canvas_draw_string(bx + 12, by + 10, "Gerenciador de Rede", 0x0074B9FF, COLOR_TRANSPARENT);
 
-    /* Connection badge */
+    
     bool eth_up = netif_is_up();
     bool wif_up = wifi_is_connected();
     uint32_t badge_col = (eth_up||wif_up) ? 0x0000B894 : 0x00C0392B;
@@ -90,7 +90,7 @@ static void nm_on_paint(window_t *win) {
     int vx = lx + 90;
     uint32_t lbl = 0x0074B9FF, val = 0x00DFE6E9;
 
-    /* ── Ethernet section ── */
+    
     canvas_draw_string(lx, cy, "-- Ethernet --", 0x00636E72, COLOR_TRANSPARENT);
     cy += 16;
 
@@ -109,7 +109,7 @@ static void nm_on_paint(window_t *win) {
     else memcpy(gw_str, "0.0.0.0", 8);
     draw_row(lx, &cy, "Gateway:", gw_str, lbl, val, vx);
 
-    /* DHCP button */
+    
     int btn_w=180, btn_h=22, btn_x=bx+(w-btn_w)/2;
     uint32_t btn_col = nm_connecting ? 0x00555555 : 0x000984E3;
     canvas_fill_rounded_rect(btn_x, cy, btn_w, btn_h, 5, btn_col);
@@ -125,14 +125,14 @@ static void nm_on_paint(window_t *win) {
         cy += 16;
     }
 
-    /* Auto-update connecting status */
+    
     if (nm_connecting && timer_get_ticks()-nm_connect_t > 4000) {
         nm_connecting = false;
         if (net_is_configured()) memcpy(nm_status, "IP obtido!", 11);
         else memcpy(nm_status, "Timeout DHCP", 13);
     }
 
-    /* ── WiFi section ── */
+    
     canvas_draw_line(bx+4, cy, bx+w-4, cy, 0x00334455); cy += 10;
     canvas_draw_string(lx, cy, "-- WiFi --", 0x00636E72, COLOR_TRANSPARENT);
 
@@ -145,13 +145,13 @@ static void nm_on_paint(window_t *win) {
     }
     cy += 16;
 
-    /* WiFi status message */
+    
     if (g_wifi_status_msg[0]) {
         canvas_draw_string(lx, cy, g_wifi_status_msg, 0x0074B9FF, COLOR_TRANSPARENT);
         cy += 16;
     }
 
-    /* Scan button */
+    
     bool scanning = (g_wifi_state == WIFI_STATE_SCANNING);
     uint32_t scan_col = scanning ? 0x00555555 : 0x006C3483;
     canvas_fill_rounded_rect(lx, cy, 80, 20, 4, scan_col);
@@ -159,7 +159,7 @@ static void nm_on_paint(window_t *win) {
                        0x00FFFFFF, COLOR_TRANSPARENT);
     cy += 26;
 
-    /* Network list */
+    
     int i;
     for (i = 0; i < g_wifi_network_count && i < 8; i++) {
         wifi_network_t *n = &g_wifi_networks[i];
@@ -168,14 +168,14 @@ static void nm_on_paint(window_t *win) {
         canvas_fill_rect(bx+4, cy, w-8, 20, row_bg);
         if (sel) canvas_draw_rect(bx+4, cy, w-8, 20, 0x000984E3);
 
-        /* Signal bar indicator */
-        int sig = (n->rssi + 100);  /* -100dBm=0%, -50dBm=50% */
+        
+        int sig = (n->rssi + 100);  
         if (sig < 0) sig = 0; if (sig > 60) sig = 60;
         uint32_t sig_col = sig>40 ? 0x0000B894 : (sig>20 ? 0x00FDCB6E : 0x00E74C3C);
         canvas_fill_rect(bx+w-30, cy+6, (sig*24)/60, 8, sig_col);
         canvas_draw_rect(bx+w-30, cy+6, 24, 8, 0x00334455);
 
-        /* Security icon */
+        
         const char *sec = "";
         if (n->security==WIFI_SEC_WPA2) sec="WPA2";
         else if (n->security==WIFI_SEC_WPA) sec="WPA";
@@ -186,26 +186,26 @@ static void nm_on_paint(window_t *win) {
         cy += 22;
     }
 
-    /* Password input (shown when WPA2 network selected) */
+    
     if (nm_sel_idx >= 0 &&
         g_wifi_networks[nm_sel_idx].security != WIFI_SEC_OPEN) {
         canvas_draw_string(lx, cy, "Senha:", lbl, COLOR_TRANSPARENT); cy+=16;
         canvas_fill_rect(lx, cy, w-16, 22, nm_pw_active ? 0x00243850 : 0x001E2D3E);
         canvas_draw_rect(lx, cy, w-16, 22, nm_pw_active ? 0x000984E3 : 0x00334455);
-        /* Draw asterisks */
+        
         char stars[64]; int si;
         for(si=0;si<nm_pw_len&&si<32;si++) stars[si]='*';
         stars[si]='\0';
         canvas_draw_string(lx+4, cy+6, stars, val, COLOR_TRANSPARENT);
         if (nm_pw_active) {
-            /* blinking cursor */
+            
             int cx2 = lx+4+nm_pw_len*8;
             canvas_fill_rect(cx2, cy+4, 2, 14, 0x00FFFFFF);
         }
         cy += 26;
     }
 
-    /* Connect button */
+    
     if (nm_sel_idx >= 0) {
         bool connected_to = (g_wifi_connected_idx == nm_sel_idx &&
                              g_wifi_state == WIFI_STATE_CONNECTED);
@@ -219,13 +219,13 @@ static void nm_on_paint(window_t *win) {
     (void)h;
 }
 
-/* ── click handler ───────────────────────────────────────────────────────── */
+
 
 static void nm_on_click(window_t *win, int mx, int my) {
     int bx = win->content_x, by = win->content_y;
     int w  = win->content_w;
 
-    /* DHCP button: ~by+44+16+18+18+18 = by+114 */
+    
     int dhcp_btn_y = by + 114;
     int btn_w = 180, btn_h = 22;
     int btn_x = bx + (w - btn_w)/2;
@@ -242,7 +242,7 @@ static void nm_on_click(window_t *win, int mx, int my) {
 
     if (!rtl8188eu_present()) return;
 
-    /* Scan button: estimate by+44+16+18+18+18+22+6+16 ~ by+158 */
+    
     int scan_y = by + 158;
     if (mx >= bx+8 && mx <= bx+88 && my >= scan_y && my <= scan_y+20) {
         wifi_scan();
@@ -250,7 +250,7 @@ static void nm_on_click(window_t *win, int mx, int my) {
         return;
     }
 
-    /* Network list rows: scan_y+26 */
+    
     int list_y = scan_y + 26;
     int i;
     for (i = 0; i < g_wifi_network_count && i < 8; i++) {
@@ -264,20 +264,20 @@ static void nm_on_click(window_t *win, int mx, int my) {
         }
     }
 
-    /* Password field and Connect button */
+    
     if (nm_sel_idx >= 0) {
         int pw_y   = list_y + g_wifi_network_count*22 + 16;
         int conn_y = pw_y + 22 + 6 + 16 + 26;
         if (g_wifi_networks[nm_sel_idx].security == WIFI_SEC_OPEN)
             conn_y = list_y + g_wifi_network_count*22;
 
-        /* Password field click */
+        
         if (my >= pw_y && my <= pw_y+22) {
             nm_pw_active = true;
             return;
         }
 
-        /* Connect button click */
+        
         if (mx >= bx+8 && mx <= bx+128 && my >= conn_y && my <= conn_y+22) {
             bool connected_to = (g_wifi_connected_idx == nm_sel_idx &&
                                   g_wifi_state == WIFI_STATE_CONNECTED);
@@ -286,7 +286,7 @@ static void nm_on_click(window_t *win, int mx, int my) {
             } else {
                 const char *pw = (g_wifi_networks[nm_sel_idx].security==WIFI_SEC_OPEN)
                                   ? NULL : nm_pw_buf;
-                /* Send auth request */
+                
                 extern uint8_t net_mac[6];
                 uint8_t auth[30];
                 memset(auth,0,30);
@@ -304,7 +304,7 @@ static void nm_on_click(window_t *win, int mx, int my) {
     }
 }
 
-/* ── key handler (password input) ───────────────────────────────────────── */
+
 
 static void nm_on_key(window_t *win, char key) {
     (void)win;
@@ -319,7 +319,7 @@ static void nm_on_key(window_t *win, char key) {
     }
 }
 
-/* ── open ────────────────────────────────────────────────────────────────── */
+
 
 void network_manager_open(void) {
     if (nm_win && nm_win->used) { wm_focus(nm_win); return; }

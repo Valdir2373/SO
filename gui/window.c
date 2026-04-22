@@ -385,7 +385,7 @@ void wm_mouse_down(int x, int y, uint8_t btn) {
         return;
     }
 
-    /* Content area click */
+    
     if (x >= win->content_x && x < win->content_x + win->content_w &&
         y >= win->content_y && y < win->content_y + win->content_h) {
         if (win->on_click)

@@ -12,7 +12,7 @@ typedef signed short        int16_t;
 typedef signed int          int32_t;
 typedef signed long long    int64_t;
 
-/* x86_64: pointers and sizes are 64-bit */
+
 typedef uint64_t            size_t;
 typedef int64_t             ssize_t;
 typedef uint64_t            uintptr_t;

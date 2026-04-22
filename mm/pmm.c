@@ -6,7 +6,7 @@
 
 extern uint64_t kernel_end;
 
-/* Bitmap covers up to 4 GB: 4G/4K = 1M pages = 32768 uint32_t words */
+
 #define MAX_PAGES    (1024ULL * 1024ULL)
 #define BITMAP_SIZE  (MAX_PAGES / 32ULL)
 
@@ -53,7 +53,7 @@ void pmm_mark_free(uint64_t addr, uint64_t size) {
 void pmm_init(multiboot_info_t *mbi) {
     uint64_t i;
 
-    /* Mark everything as used initially */
+    
     for (i = 0; i < BITMAP_SIZE; i++) bitmap[i] = 0xFFFFFFFF;
 
     if (mbi->flags & MULTIBOOT_INFO_MEM_MAP) {
@@ -64,7 +64,7 @@ void pmm_init(multiboot_info_t *mbi) {
             if (entry->type == MULTIBOOT_MEMORY_AVAILABLE) {
                 uint64_t base = entry->base_addr;
                 uint64_t len  = entry->length;
-                /* Only track up to 4 GB in bitmap */
+                
                 if (base < 0x100000000ULL) {
                     if (base + len > 0x100000000ULL)
                         len = 0x100000000ULL - base;
@@ -82,7 +82,7 @@ void pmm_init(multiboot_info_t *mbi) {
         pmm_mark_free(0x100000, upper);
     }
 
-    /* Reserve low 1 MB and kernel image */
+    
     pmm_mark_used(0x000000, 0x100000);
     uint64_t kend = (uint64_t)&kernel_end;
     if (kend > 0x100000)

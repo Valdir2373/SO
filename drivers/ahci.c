@@ -1,5 +1,5 @@
 
-/* AHCI/SATA driver — PCI class 0x01/0x06, BAR5 MMIO */
+
 
 #include <drivers/ahci.h>
 #include <drivers/pci.h>
@@ -8,14 +8,14 @@
 #include <io.h>
 #include <types.h>
 
-/* ─── MMIO register offsets ──────────────────────────────────────────────── */
+
 #define HBA_CAP   0x00
 #define HBA_GHC   0x04
 #define HBA_IS    0x08
 #define HBA_PI    0x0C
 #define HBA_VS    0x10
-#define HBA_GHC_AE   (1u<<31)  /* AHCI Enable */
-#define HBA_GHC_HR   (1u<<0)   /* HBA Reset */
+#define HBA_GHC_AE   (1u<<31)  
+#define HBA_GHC_HR   (1u<<0)   
 
 #define PORT_CLB  0x00
 #define PORT_CLBU 0x04
@@ -47,7 +47,7 @@
 #define SATA_SIG_ATA  0x00000101u
 #define SATA_SIG_ATAPI 0xEB140101u
 
-/* ─── Structures ─────────────────────────────────────────────────────────── */
+
 typedef struct __attribute__((packed)) {
     uint8_t  fis_type;
     uint8_t  pmport_c;
@@ -67,7 +67,7 @@ typedef struct __attribute__((packed)) {
     uint32_t dba;
     uint32_t dbau;
     uint32_t _res;
-    uint32_t dbc;   /* bit 0 = int on completion; bits 21:1 = byte_count-1 */
+    uint32_t dbc;   
 } hba_prd_t;
 
 typedef struct __attribute__((packed)) {
@@ -78,7 +78,7 @@ typedef struct __attribute__((packed)) {
 } hba_cmd_tbl_t;
 
 typedef struct __attribute__((packed)) {
-    uint16_t desc;    /* CFL[4:0] | A | W | P | ... */
+    uint16_t desc;    
     uint16_t prdtl;
     uint32_t prdbc;
     uint32_t ctba;
@@ -86,16 +86,16 @@ typedef struct __attribute__((packed)) {
     uint32_t _res[4];
 } hba_cmd_hdr_t;
 
-/* ─── State ──────────────────────────────────────────────────────────────── */
-static uint32_t      g_hba   = 0;    /* MMIO base (physical = virtual) */
-static int           g_port  = -1;   /* first ATA port index */
-static hba_cmd_hdr_t *g_cl   = 0;    /* command list (32 headers × 32 B) */
-static uint8_t       *g_fis  = 0;    /* received FIS area (256 B) */
-static hba_cmd_tbl_t *g_ct   = 0;    /* command table */
-static uint32_t      g_sects = 0;    /* sector count from IDENTIFY */
+
+static uint32_t      g_hba   = 0;    
+static int           g_port  = -1;   
+static hba_cmd_hdr_t *g_cl   = 0;    
+static uint8_t       *g_fis  = 0;    
+static hba_cmd_tbl_t *g_ct   = 0;    
+static uint32_t      g_sects = 0;    
 static bool          g_ok    = false;
 
-/* ─── Helpers ─────────────────────────────────────────────────────────────── */
+
 static inline volatile uint32_t *hba_r(uint32_t off) {
     return (volatile uint32_t *)(g_hba + off);
 }
@@ -124,7 +124,7 @@ static bool port_wait(void) {
     volatile uint32_t *tfd = port_r(PORT_TFD);
     uint32_t t = 0;
     while ((*ci & 1u) && ++t < 2000000) {
-        if (*tfd & 0x01u) { /* Error bit */
+        if (*tfd & 0x01u) { 
             *port_r(PORT_IS) = 0xFFFFFFFFu;
             return false;
         }
@@ -132,18 +132,18 @@ static bool port_wait(void) {
     return (t < 2000000);
 }
 
-/* ─── Issue one command slot 0 ───────────────────────────────────────────── */
+
 static bool ahci_issue(uint8_t cmd, uint64_t lba, uint16_t count,
                        void *buf, bool write) {
     if (!g_ok || !buf) return false;
 
     *port_r(PORT_IS) = 0xFFFFFFFFu;
 
-    /* Build FIS in command table CFIS area */
+    
     fis_h2d_t *fis = (fis_h2d_t *)g_ct->cfis;
     memset(fis, 0, sizeof(*fis));
     fis->fis_type = FIS_TYPE_REG_H2D;
-    fis->pmport_c = 0x80u;  /* C = 1: command register write */
+    fis->pmport_c = 0x80u;  
     fis->command  = cmd;
     fis->device   = ATA_DEV_LBA;
     fis->lba0 = (uint8_t)lba;
@@ -155,27 +155,27 @@ static bool ahci_issue(uint8_t cmd, uint64_t lba, uint16_t count,
     fis->countl = (uint8_t)count;
     fis->counth = (uint8_t)(count >> 8);
 
-    /* PRDT: single entry for the whole transfer */
+    
     uint32_t byte_count = (uint32_t)count * 512u;
     g_ct->prdt[0].dba  = (uint32_t)(uintptr_t)buf;
     g_ct->prdt[0].dbau = 0;
     g_ct->prdt[0]._res = 0;
     g_ct->prdt[0].dbc  = (byte_count - 1u) & 0x3FFFFFu;
 
-    /* Command header slot 0 */
+    
     g_cl[0].desc  = (uint16_t)((sizeof(fis_h2d_t) / 4u) | (write ? (1u<<6) : 0u));
     g_cl[0].prdtl = 1;
     g_cl[0].prdbc = 0;
     g_cl[0].ctba  = (uint32_t)(uintptr_t)g_ct;
     g_cl[0].ctbau = 0;
 
-    *port_r(PORT_CI) = 1u;   /* issue slot 0 */
+    *port_r(PORT_CI) = 1u;   
     return port_wait();
 }
 
-/* ─── Public API ─────────────────────────────────────────────────────────── */
+
 bool ahci_init(void) {
-    /* Scan PCI for AHCI controller (class=0x01, sub=0x06) */
+    
     uint8_t bus, slot, func;
     bool found = false;
     for (bus = 0; bus < 8 && !found; bus++) {
@@ -185,11 +185,11 @@ bool ahci_init(void) {
             uint8_t cls = (uint8_t)(pci_read32(bus, slot, 0, 0x08) >> 24);
             uint8_t sub = (uint8_t)(pci_read32(bus, slot, 0, 0x08) >> 16);
             if (cls == 0x01 && sub == 0x06) {
-                /* Enable bus master + memory space */
+                
                 uint16_t pcmd = pci_read16(bus, slot, 0, PCI_COMMAND);
                 pci_write16(bus, slot, 0, PCI_COMMAND,
                             (uint16_t)(pcmd | PCI_CMD_IO_SPACE | PCI_CMD_BUS_MASTER | 0x02));
-                /* BAR5 = AHCI MMIO base */
+                
                 g_hba = pci_read32(bus, slot, 0, 0x24) & 0xFFFFFFF0u;
                 found = true;
             }
@@ -197,10 +197,10 @@ bool ahci_init(void) {
     }
     if (!found || !g_hba) return false;
 
-    /* Enable AHCI mode */
+    
     *hba_r(HBA_GHC) |= HBA_GHC_AE;
 
-    /* Find first ATA port */
+    
     uint32_t pi = *hba_r(HBA_PI);
     int i;
     for (i = 0; i < 32; i++) {
@@ -214,14 +214,14 @@ bool ahci_init(void) {
     }
     if (g_port < 0) return false;
 
-    /* Allocate command list (1024 B, 1024-aligned) and FIS area (256 B) */
-    g_cl  = (hba_cmd_hdr_t *)kmalloc(1024 + 1024); /* over-alloc for alignment */
+    
+    g_cl  = (hba_cmd_hdr_t *)kmalloc(1024 + 1024); 
     if (!g_cl) return false;
-    /* Align to 1024 */
+    
     uint32_t cl_addr = ((uint32_t)(uintptr_t)g_cl + 1023u) & ~1023u;
     g_cl = (hba_cmd_hdr_t *)(uintptr_t)cl_addr;
 
-    g_fis = (uint8_t *)kmalloc(512);  /* 256 B FIS area */
+    g_fis = (uint8_t *)kmalloc(512);  
     if (!g_fis) return false;
     uint32_t fis_addr = ((uint32_t)(uintptr_t)g_fis + 255u) & ~255u;
     g_fis = (uint8_t *)(uintptr_t)fis_addr;
@@ -248,14 +248,14 @@ bool ahci_init(void) {
     port_start();
     g_ok = true;
 
-    /* IDENTIFY to get sector count */
+    
     uint16_t id[256];
     memset(id, 0, sizeof(id));
     if (ahci_issue(ATA_CMD_IDENTIFY, 0, 1, id, false)) {
-        /* LBA48 total sectors at words 100-103 */
+        
         g_sects = id[100] | ((uint32_t)id[101] << 16);
         if (!g_sects)
-            g_sects = id[60] | ((uint32_t)id[61] << 16); /* LBA28 fallback */
+            g_sects = id[60] | ((uint32_t)id[61] << 16); 
     }
 
     return true;

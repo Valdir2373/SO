@@ -30,11 +30,11 @@ void canvas_draw_string(int x, int y, const char *str, uint32_t fg, uint32_t bg)
 
 int canvas_string_width(const char *str);
 
-/* Draw a pixel buffer scaled to fit (w x h) at (x,y) */
+
 void canvas_draw_scaled_bitmap(int x, int y, int dw, int dh,
                                const uint32_t *src, int sw, int sh);
 
-/* Font scale: 1=8x16 (terminal), 2=16x32 (UI) */
+
 void canvas_set_font_scale(int s);
 int  canvas_get_font_scale(void);
 

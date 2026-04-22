@@ -92,7 +92,7 @@ void vfs_init(void);
 
 void vfs_mount_root(vfs_node_t *root);
 
-/* Mount a virtual filesystem at a path prefix (e.g. "/dev", "/proc") */
+
 void vfs_mount(const char *path, vfs_node_t *root);
 
 
@@ -106,7 +106,7 @@ vfs_node_t *vfs_finddir(vfs_node_t *node, const char *name);
 
 vfs_node_t *vfs_resolve(const char *path);
 
-/* Resolve o diretório pai e retorna o nome do arquivo em name_out (buf 256 bytes) */
+
 vfs_node_t *vfs_resolve_parent(const char *path, char *name_out);
 
 int vfs_create(vfs_node_t *dir, const char *name, uint32_t perms);

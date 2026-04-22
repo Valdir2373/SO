@@ -112,9 +112,6 @@ static void fat32_83_to_name(const uint8_t *fat_name, const uint8_t *fat_ext,
 
 
 
-/* ============================================================
- * ESCRITA FAT32
- * ============================================================ */
 
 static void fat32_name_to_83(const char *name, uint8_t *fname, uint8_t *fext) {
     memset(fname, ' ', 8);
@@ -424,7 +421,7 @@ unl_done:
     return del ? 0 : -1;
 }
 
-/* ============================================================ */
+
 
 static uint32_t fat32_vfs_read(vfs_node_t *node, uint32_t offset,
                                 uint32_t size, uint8_t *buf) {
@@ -578,7 +575,7 @@ static vfs_node_t *fat32_vfs_finddir(vfs_node_t *node, const char *name) {
                     strcpy(result->name, display_name);
                     result->size    = e->file_size;
                     result->impl    = ((uint32_t)e->cluster_hi << 16) | e->cluster_lo;
-                    result->inode   = node->impl;  /* parent cluster para update_dirent */
+                    result->inode   = node->impl;  
                     result->flags   = (e->attr & FAT_ATTR_DIRECTORY) ?
                                       VFS_DIRECTORY : VFS_FILE;
                     fat32_set_node_ops(result);

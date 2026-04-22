@@ -1,5 +1,5 @@
 
-/* SHA1 + HMAC-SHA1 + PBKDF2 — FIPS 180-4 */
+
 
 #include <lib/sha1.h>
 #include <lib/string.h>
@@ -91,13 +91,13 @@ void hmac_sha1(const uint8_t *key, uint32_t klen,
     sha1_final(&ctx, mac);
 }
 
-/* PBKDF2-HMAC-SHA1 per RFC 2898 */
+
 void pbkdf2_hmac_sha1(const uint8_t *pass, uint32_t plen,
                       const uint8_t *salt, uint32_t slen,
                       uint32_t iters, uint8_t *out, uint32_t olen) {
     uint32_t block = 1, done = 0;
     while (done < olen) {
-        /* U1 = HMAC(pass, salt || INT(block)) */
+        
         uint8_t s2[256];
         uint32_t s2len = slen + 4;
         if (slen < 252) {

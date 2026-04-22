@@ -7,6 +7,6 @@
 #define X11_DISPLAY_NUM  0
 
 void x11_server_init(void);
-void x11_server_poll(void);    /* call periodically from timer/scheduler */
+void x11_server_poll(void);    
 
 #endif

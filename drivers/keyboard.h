@@ -20,7 +20,7 @@ char keyboard_read(void);
 
 bool keyboard_available(void);
 
-/* Inject a character from external source (e.g. USB HID) */
+
 void keyboard_inject(char c);
 
 #endif 

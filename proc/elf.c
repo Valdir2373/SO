@@ -9,7 +9,7 @@
 #include <fs/vfs.h>
 #include <types.h>
 
-/* User stack for 32-bit Linux ELF processes */
+
 #define USER_STACK_PAGE      0xBFFFC000ULL
 #define USER_STACK_PAGES     4U
 #define USER_STACK_SIZE      (USER_STACK_PAGES * 0x1000U)
@@ -26,7 +26,7 @@ bool elf_validate(const uint8_t *data, size_t size) {
 
     if (h->e_ident[EI_DATA] != ELFDATA2LSB) return false;
 
-    /* Accept ELF32 i386 or ELF64 x86_64 */
+    
     if (h->e_ident[EI_CLASS] == ELFCLASS32) {
         if (h->e_machine != EM_386) return false;
     } else if (h->e_ident[EI_CLASS] == ELFCLASS64) {
@@ -105,13 +105,13 @@ int elf_load(process_t *proc, const uint8_t *data, size_t size,
 
     if (!is64) {
         phnum = hdr32->e_phnum;
-        /* Check for PT_INTERP (dynamic) */
+        
         for (i = 0; i < phnum; i++) {
             const elf32_phdr_t *ph = (const elf32_phdr_t *)
                 (data + hdr32->e_phoff + (uint32_t)i * hdr32->e_phentsize);
             if (ph->p_type == PT_INTERP) result->is_dynamic = true;
         }
-        /* Load PT_LOAD segments */
+        
         for (i = 0; i < phnum; i++) {
             const elf32_phdr_t *ph = (const elf32_phdr_t *)
                 (data + hdr32->e_phoff + (uint32_t)i * hdr32->e_phentsize);
@@ -124,7 +124,7 @@ int elf_load(process_t *proc, const uint8_t *data, size_t size,
             if (seg_end > segment_end) segment_end = seg_end;
         }
 
-        /* Map user stack */
+        
         for (i = 0; i < USER_STACK_PAGES; i++) {
             uint64_t phys = pmm_alloc_page();
             if (!phys) { vmm_switch_address_space(saved_dir); return -1; }
@@ -134,7 +134,7 @@ int elf_load(process_t *proc, const uint8_t *data, size_t size,
         }
         memset((void *)(uintptr_t)USER_STACK_PAGE, 0, USER_STACK_SIZE);
 
-        /* Initial stack frame: argc / argv[0] / NULL / envp NULL / AT_NULL */
+        
         uint64_t name_virt = USER_STACK_PAGE + USER_STACK_SIZE - 0x20U;
         size_t nlen = strlen(proc->name);
         if (nlen > 15) nlen = 15;
@@ -142,11 +142,11 @@ int elf_load(process_t *proc, const uint8_t *data, size_t size,
         ((char *)(uintptr_t)name_virt)[nlen] = '\0';
 
         uint32_t *sp = (uint32_t *)(uintptr_t)USER_STACK_TOP_INIT;
-        sp[0] = 1;                    /* argc */
-        sp[1] = (uint32_t)name_virt;  /* argv[0] */
-        sp[2] = 0;                    /* argv[1] = NULL */
-        sp[3] = 0;                    /* envp[0] = NULL */
-        sp[4] = 0;                    /* AT_NULL */
+        sp[0] = 1;                    
+        sp[1] = (uint32_t)name_virt;  
+        sp[2] = 0;                    
+        sp[3] = 0;                    
+        sp[4] = 0;                    
         sp[5] = 0;
 
         vmm_switch_address_space(saved_dir);
@@ -154,11 +154,11 @@ int elf_load(process_t *proc, const uint8_t *data, size_t size,
         result->user_stack_top = USER_STACK_TOP_INIT;
         result->heap_base      = (segment_end + 0xFFFULL) & ~0xFFFULL;
     } else {
-        /* ELF64 */
+        
         const elf64_hdr_t *hdr64 = (const elf64_hdr_t *)data;
         phnum = hdr64->e_phnum;
 
-        /* Collect PT_INTERP path and check for dynamic */
+        
         char interp_path[256];
         interp_path[0] = 0;
         uint64_t phdr_vaddr = 0;
@@ -173,14 +173,14 @@ int elf_load(process_t *proc, const uint8_t *data, size_t size,
             }
         }
 
-        /* For PIE (ET_DYN) executables, choose a load base */
+        
         uint64_t load_base = 0;
         if (hdr64->e_type == ET_DYN && !result->is_dynamic)
-            load_base = 0x400000ULL;  /* non-interp PIE */
+            load_base = 0x400000ULL;  
         else if (hdr64->e_type == ET_DYN)
-            load_base = 0x400000ULL;  /* Firefox / PIE with interp */
+            load_base = 0x400000ULL;  
 
-        /* Load PT_LOAD segments */
+        
         for (i = 0; i < phnum; i++) {
             const elf64_phdr_t *ph = (const elf64_phdr_t *)
                 (data + hdr64->e_phoff + (uint64_t)i * hdr64->e_phentsize);
@@ -188,7 +188,7 @@ int elf_load(process_t *proc, const uint8_t *data, size_t size,
                 phdr_vaddr = load_base + ph->p_vaddr;
             }
             if (ph->p_type != PT_LOAD) continue;
-            /* For PIE, shift by load_base */
+            
             elf64_phdr_t shifted = *ph;
             shifted.p_vaddr += load_base;
             if (load_pt_load64(proc, data, &shifted) != 0) {
@@ -199,7 +199,7 @@ int elf_load(process_t *proc, const uint8_t *data, size_t size,
             if (seg_end > segment_end) segment_end = seg_end;
         }
 
-        /* Map user stack — 32 pages below canonical top */
+        
         uint64_t stack_pages = 32;
         uint64_t stack_base  = 0x7FFFFFFC0000ULL - stack_pages * PAGE_SIZE;
         for (i = 0; i < (uint16_t)stack_pages; i++) {
@@ -215,7 +215,7 @@ int elf_load(process_t *proc, const uint8_t *data, size_t size,
         uint64_t prog_entry = load_base + hdr64->e_entry;
 
         if (result->is_dynamic && interp_path[0]) {
-            /* Load interpreter and set up auxv-based stack */
+            
             dynlink_result_t dl;
             if (dynlink_load(proc, interp_path, prog_entry,
                               phdr_vaddr ? phdr_vaddr : (load_base + hdr64->e_phoff),
@@ -227,7 +227,7 @@ int elf_load(process_t *proc, const uint8_t *data, size_t size,
                 result->heap_base      = (segment_end + 0x200000ULL) & ~0x1FFFFFULL;
                 return 0;
             }
-            /* dynlink failed — fall through to static execution attempt */
+            
         }
 
         vmm_switch_address_space(saved_dir);

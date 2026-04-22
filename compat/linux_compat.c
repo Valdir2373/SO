@@ -1,11 +1,4 @@
 
-/* Linux syscall compatibility layer — implementado a partir do kernel Linux
- *
- * Referência: Linux kernel fs/, mm/, kernel/, net/ source code (GPL v2)
- * Implementação nativa para Krypx — sem copiar código do kernel.
- *
- * Cobre as ~80 syscalls mais usadas por binários estáticos musl/glibc i386.
- */
 
 #include "linux_compat.h"
 #include <io.h>
@@ -23,7 +16,7 @@
 #include <lib/string.h>
 #include <types.h>
 
-/* ── Linux struct definitions (from kernel uapi headers) ─────────────────── */
+
 
 typedef struct {
     uint64_t st_dev;
@@ -104,13 +97,13 @@ typedef struct {
     uint32_t rlim_max;
 } linux_rlimit_t;
 
-/* iovec for readv/writev */
+
 typedef struct { void *iov_base; uint32_t iov_len; } linux_iovec_t;
 
-/* ── Constants ───────────────────────────────────────────────────────────── */
+
 #define LINUX_HEAP_BASE  0x08800000U
 
-/* Linux open() flag values (POSIX octal — differ from our VFS values) */
+
 #undef O_RDONLY
 #undef O_WRONLY
 #undef O_RDWR
@@ -125,29 +118,29 @@ typedef struct { void *iov_base; uint32_t iov_len; } linux_iovec_t;
 #define O_APPEND   02000
 #define O_NONBLOCK 04000
 
-/* VFS-layer flags for internal use */
+
 #define VFS_O_RDONLY   0x00
 #define VFS_O_WRONLY   0x01
 
-/* Portable offsetof for freestanding */
+
 #ifndef offsetof
 #define offsetof(type, member) ((uint32_t)&((type *)0)->member)
 #endif
 
-/* Per-process working directory (simple global — Linux binaries are single-threaded here) */
+
 static char g_cwd[256] = "/";
 #define SEEK_SET   0
 #define SEEK_CUR   1
 #define SEEK_END   2
 
-/* file type bits for stat.st_mode */
+
 #define S_IFMT   0xF000
 #define S_IFREG  0x8000
 #define S_IFDIR  0x4000
 #define S_IFCHR  0x2000
 #define S_IFLNK  0xA000
 
-/* dirent d_type */
+
 #define DT_UNKNOWN 0
 #define DT_FIFO    1
 #define DT_CHR     2
@@ -157,11 +150,11 @@ static char g_cwd[256] = "/";
 #define DT_LNK    10
 #define DT_SOCK   12
 
-/* ── Global output callback ──────────────────────────────────────────────── */
+
 static linux_output_fn g_output_fn = 0;
 void linux_compat_set_output(linux_output_fn fn) { g_output_fn = fn; }
 
-/* ── Helper: fill stat64 from vfs_node ───────────────────────────────────── */
+
 static void fill_stat64(linux_stat64_t *s, vfs_node_t *node) {
     memset(s, 0, sizeof(*s));
     bool is_dir = (node->flags & VFS_DIRECTORY) != 0;
@@ -186,26 +179,26 @@ static void fill_stat(linux_stat_t *s, vfs_node_t *node) {
     s->st_atime = s->st_mtime = s->st_ctime = timer_get_ticks() / 1000;
 }
 
-/* ── /dev/ virtual devices ───────────────────────────────────────────────── */
+
 #define DEV_NULL    1
 #define DEV_ZERO    2
 #define DEV_URANDOM 3
 #define DEV_FB0     4
 #define DEV_TTY     5
 
-/* Special FD value to mark a device FD — store in unused upper pointer bits */
+
 #define IS_DEV_FD(p) (((uintptr_t)(p)) < 16 && ((uintptr_t)(p)) > 0)
 #define DEV_FD(id)   ((vfs_node_t *)((uintptr_t)(id)))
 #define FD_DEV_ID(p) ((uint8_t)((uintptr_t)(p)))
 
 static uint32_t g_fb_mmap_base = 0xE0000000U;
 
-/* ── open ────────────────────────────────────────────────────────────────── */
+
 static int32_t lx_open(const char *path, uint32_t flags, uint32_t mode) {
     (void)mode;
     if (!path) return -LINUX_EINVAL;
 
-    /* Virtual devices */
+    
     if (strcmp(path, "/dev/null") == 0 || strcmp(path, "/dev/zero") == 0 ||
         strcmp(path, "/dev/urandom") == 0 || strcmp(path, "/dev/random") == 0 ||
         strcmp(path, "/dev/tty") == 0 || strcmp(path, "/dev/console") == 0 ||
@@ -247,7 +240,7 @@ static int32_t lx_open(const char *path, uint32_t flags, uint32_t mode) {
         return -LINUX_ENOMEM;
     }
 
-    /* Proc pseudo-fs */
+    
     if (strncmp(path, "/proc/", 6) == 0 ||
         strncmp(path, "/sys/", 5) == 0) {
         return -LINUX_ENOENT;
@@ -255,9 +248,9 @@ static int32_t lx_open(const char *path, uint32_t flags, uint32_t mode) {
 
     vfs_node_t *node = vfs_resolve(path);
     if (!node) {
-        /* Create file if O_CREAT */
+        
         if (flags & O_CREAT) {
-            /* Find parent directory */
+            
             const char *slash = path + strlen(path) - 1;
             while (slash > path && *slash != '/') slash--;
             if (slash == path) return -LINUX_ENOENT;
@@ -276,7 +269,7 @@ static int32_t lx_open(const char *path, uint32_t flags, uint32_t mode) {
         }
     }
     if ((node->flags & VFS_DIRECTORY) && !(flags & 0200000)) {
-        /* Opening directory — allowed for getdents */
+        
     }
     process_t *p = process_current();
     if (!p) return -LINUX_EINVAL;
@@ -287,7 +280,7 @@ static int32_t lx_open(const char *path, uint32_t flags, uint32_t mode) {
             p->fds[fd]        = node;
             p->fd_offsets[fd] = (flags & O_APPEND) ? node->size : 0;
             if (flags & O_TRUNC) {
-                p->fd_offsets[fd] = 0; /* truncate not yet implemented */
+                p->fd_offsets[fd] = 0; 
             }
             return (int32_t)fd;
         }
@@ -295,11 +288,11 @@ static int32_t lx_open(const char *path, uint32_t flags, uint32_t mode) {
     return -LINUX_ENOMEM;
 }
 
-/* ── read ────────────────────────────────────────────────────────────────── */
+
 static int32_t lx_read(uint32_t fd, char *buf, uint32_t count) {
     if (!buf || count == 0) return -LINUX_EINVAL;
     process_t *p = process_current();
-    if (fd == 0) return 0; /* stdin: no input for now */
+    if (fd == 0) return 0; 
     if (!p || fd >= MAX_FDS || !p->fds[fd]) return -LINUX_EBADF;
     if (IS_DEV_FD(p->fds[fd])) {
         uint8_t id = FD_DEV_ID(p->fds[fd]);
@@ -317,9 +310,9 @@ static int32_t lx_read(uint32_t fd, char *buf, uint32_t count) {
     return n;
 }
 
-/* ── serial helper (COM1) ────────────────────────────────────────────────── */
+
 static void lx_ser_putc(char c) {
-    /* Wait for transmit empty */
+    
     while (!(inb(0x3FD) & 0x20));
     outb(0x3F8, (uint8_t)c);
 }
@@ -331,14 +324,14 @@ static void lx_ser_write(const char *buf, uint32_t n) {
     }
 }
 
-/* ── write ───────────────────────────────────────────────────────────────── */
+
 static int32_t lx_write(uint32_t fd, const char *buf, uint32_t count) {
     if (!buf || count == 0) return -LINUX_EINVAL;
     if (fd == 1 || fd == 2) {
         uint32_t i;
         if (g_output_fn) { for(i=0;i<count;i++) g_output_fn(buf[i]); }
         else { for(i=0;i<count;i++) vga_putchar(buf[i]); }
-        lx_ser_write(buf, count);   /* also mirror to serial */
+        lx_ser_write(buf, count);   
         return (int32_t)count;
     }
     process_t *p = process_current();
@@ -353,7 +346,7 @@ static int32_t lx_write(uint32_t fd, const char *buf, uint32_t count) {
     return (int32_t)written;
 }
 
-/* ── close ───────────────────────────────────────────────────────────────── */
+
 static int32_t lx_close(uint32_t fd) {
     process_t *p = process_current();
     if (!p || fd >= MAX_FDS || !p->fds[fd]) return -LINUX_EBADF;
@@ -362,7 +355,7 @@ static int32_t lx_close(uint32_t fd) {
     return 0;
 }
 
-/* ── lseek / _llseek ─────────────────────────────────────────────────────── */
+
 static int32_t lx_lseek(uint32_t fd, int32_t offset, uint32_t whence) {
     process_t *p = process_current();
     if (!p || fd >= MAX_FDS || !p->fds[fd]) return -LINUX_EBADF;
@@ -376,7 +369,7 @@ static int32_t lx_lseek(uint32_t fd, int32_t offset, uint32_t whence) {
     return (int32_t)p->fd_offsets[fd];
 }
 
-/* Linux _llseek: result written to *result (64-bit) */
+
 static int32_t lx_llseek(uint32_t fd, uint32_t offhi, uint32_t offlo,
                            int64_t *result, uint32_t whence) {
     int64_t off = ((int64_t)offhi << 32) | offlo;
@@ -394,7 +387,7 @@ static int32_t lx_llseek(uint32_t fd, uint32_t offhi, uint32_t offlo,
     return 0;
 }
 
-/* ── dup / dup2 ──────────────────────────────────────────────────────────── */
+
 static int32_t lx_dup(uint32_t fd) {
     process_t *p = process_current();
     if (!p || fd >= MAX_FDS || !p->fds[fd]) return -LINUX_EBADF;
@@ -419,10 +412,10 @@ static int32_t lx_dup2(uint32_t oldfd, uint32_t newfd) {
     return (int32_t)newfd;
 }
 
-/* ── pipe ────────────────────────────────────────────────────────────────── */
+
 static int32_t lx_pipe(int32_t *fds) {
     if (!fds) return -LINUX_EINVAL;
-    /* Stub: return two FDs pointing to /dev/null equivalents for now */
+    
     process_t *p = process_current();
     if (!p) return -LINUX_EINVAL;
     int32_t r = -1, w = -1;
@@ -438,7 +431,7 @@ static int32_t lx_pipe(int32_t *fds) {
     return 0;
 }
 
-/* ── stat / stat64 / lstat64 / fstat64 ───────────────────────────────────── */
+
 static int32_t lx_stat64(const char *path, linux_stat64_t *buf) {
     if (!path || !buf) return -LINUX_EINVAL;
     if (strcmp(path, "/dev/fb0") == 0) {
@@ -505,7 +498,7 @@ static int32_t lx_fstat(uint32_t fd, linux_stat_t *buf) {
     return 0;
 }
 
-/* ── getdents64 ──────────────────────────────────────────────────────────── */
+
 static int32_t lx_getdents64(uint32_t fd, linux_dirent64_t *dirp, uint32_t count) {
     process_t *p = process_current();
     if (!p || fd >= MAX_FDS || !p->fds[fd]) return -LINUX_EBADF;
@@ -538,9 +531,9 @@ static int32_t lx_getdents64(uint32_t fd, linux_dirent64_t *dirp, uint32_t count
     return (int32_t)written;
 }
 
-/* ── readlink ────────────────────────────────────────────────────────────── */
+
 static int32_t lx_readlink(const char *path, char *buf, uint32_t bufsz) {
-    /* Most paths are not symlinks in Krypx */
+    
     if (!path || !buf) return -LINUX_EINVAL;
     if (strcmp(path, "/proc/self/exe") == 0) {
         process_t *p = process_current();
@@ -553,7 +546,7 @@ static int32_t lx_readlink(const char *path, char *buf, uint32_t bufsz) {
     return -LINUX_EINVAL;
 }
 
-/* ── getcwd ──────────────────────────────────────────────────────────────── */
+
 static int32_t lx_getcwd(char *buf, uint32_t size) {
     if (!buf || size == 0) return -LINUX_EINVAL;
     uint32_t len = (uint32_t)strlen(g_cwd);
@@ -562,7 +555,7 @@ static int32_t lx_getcwd(char *buf, uint32_t size) {
     return (int32_t)(uintptr_t)buf;
 }
 
-/* ── chdir ───────────────────────────────────────────────────────────────── */
+
 static int32_t lx_chdir(const char *path) {
     if (!path) return -LINUX_EINVAL;
     vfs_node_t *node = vfs_resolve(path);
@@ -573,7 +566,7 @@ static int32_t lx_chdir(const char *path) {
     return 0;
 }
 
-/* ── mkdir / unlink / rename / rmdir ─────────────────────────────────────── */
+
 static int32_t lx_mkdir(const char *path, uint32_t mode) {
     (void)mode;
     if (!path) return -LINUX_EINVAL;
@@ -600,7 +593,7 @@ static int32_t lx_unlink(const char *path) {
 
 static int32_t lx_rename(const char *old, const char *newp) {
     (void)old; (void)newp;
-    return 0; /* stub */
+    return 0; 
 }
 
 static int32_t lx_access(const char *path, uint32_t mode) {
@@ -612,7 +605,7 @@ static int32_t lx_access(const char *path, uint32_t mode) {
     return node ? 0 : -LINUX_ENOENT;
 }
 
-/* ── memory ──────────────────────────────────────────────────────────────── */
+
 static int32_t lx_brk(uint32_t addr) {
     process_t *p = process_current();
     if (!p) return -LINUX_ENOMEM;
@@ -639,7 +632,7 @@ static int32_t lx_mmap2(uint32_t addr, uint32_t length, uint32_t prot,
     uint32_t pages = (length + 0xFFFU) >> 12;
     uint32_t base  = addr ? (addr & ~0xFFFU) : 0x40000000U;
 
-    /* mmap of /dev/fb0 → map our framebuffer */
+    
     process_t *p = process_current();
     if (fd >= 3 && p && fd < (int32_t)MAX_FDS && IS_DEV_FD(p->fds[fd])) {
         if (FD_DEV_ID(p->fds[fd]) == DEV_FB0) {
@@ -655,7 +648,7 @@ static int32_t lx_mmap2(uint32_t addr, uint32_t length, uint32_t prot,
         }
     }
 
-    /* File-backed mmap */
+    
     if (fd >= 3 && p && fd < (int32_t)MAX_FDS && p->fds[fd] && !IS_DEV_FD(p->fds[fd])) {
         if (p) {
             uint32_t i;
@@ -694,7 +687,7 @@ static int32_t lx_munmap(uint32_t addr, uint32_t length) {
 
 static int32_t lx_mprotect(uint32_t addr, uint32_t len, uint32_t prot) {
     (void)addr; (void)len; (void)prot;
-    return 0; /* always succeed */
+    return 0; 
 }
 
 static int32_t lx_mremap(uint32_t old_addr, uint32_t old_size,
@@ -715,7 +708,7 @@ static int32_t lx_mremap(uint32_t old_addr, uint32_t old_size,
     return (int32_t)old_addr;
 }
 
-/* ── process ─────────────────────────────────────────────────────────────── */
+
 static int32_t lx_exit(int32_t code) {
     process_t *p = process_current();
     if (p) { p->state = PROC_ZOMBIE; p->exit_code = code; }
@@ -731,22 +724,22 @@ static int32_t lx_getpid(void) {
 static int32_t lx_getppid(void) { return 1; }
 static int32_t lx_gettid(void)  { return lx_getpid(); }
 
-/* uid/gid — always root (0) */
+
 static int32_t lx_getuid(void)  { return 0; }
 static int32_t lx_getgid(void)  { return 0; }
 static int32_t lx_geteuid(void) { return 0; }
 static int32_t lx_getegid(void) { return 0; }
 
-/* clone — simplified: creates a new process sharing address space */
+
 static int32_t lx_clone(uint32_t flags, uint32_t stack, uint32_t ptid,
                           uint32_t tls, uint32_t ctid) {
     (void)flags; (void)stack; (void)ptid; (void)tls; (void)ctid;
-    /* Very basic: return 0 in child context (kernel thread) */
+    
     return 0;
 }
 
 static int32_t lx_fork(void) {
-    return 0; /* child always */
+    return 0; 
 }
 
 static int32_t lx_wait4(int32_t pid, int32_t *status, int32_t options, void *rusage) {
@@ -755,7 +748,7 @@ static int32_t lx_wait4(int32_t pid, int32_t *status, int32_t options, void *rus
     return -LINUX_ECHILD;
 }
 
-/* ── time ────────────────────────────────────────────────────────────────── */
+
 static int32_t lx_gettimeofday(linux_timeval_t *tv, void *tz) {
     (void)tz;
     if (tv) {
@@ -785,7 +778,7 @@ static int32_t lx_time(uint32_t *tloc) {
 static int32_t lx_nanosleep(linux_timespec_t *req, linux_timespec_t *rem) {
     (void)rem;
     if (!req) return -LINUX_EINVAL;
-    /* Busy-wait for up to 10ms to avoid blocking scheduler */
+    
     uint32_t ms = (uint32_t)(req->tv_sec * 1000 + req->tv_nsec / 1000000);
     if (ms > 10) ms = 10;
     uint32_t t0 = timer_get_ticks();
@@ -793,7 +786,7 @@ static int32_t lx_nanosleep(linux_timespec_t *req, linux_timespec_t *rem) {
     return 0;
 }
 
-/* ── uname / sysinfo ─────────────────────────────────────────────────────── */
+
 typedef struct {
     char sysname[65]; char nodename[65]; char release[65];
     char version[65]; char machine[65];  char domainname[65];
@@ -822,8 +815,8 @@ static int32_t lx_sysinfo(linux_sysinfo_t *info) {
     return 0;
 }
 
-/* ── ioctl ───────────────────────────────────────────────────────────────── */
-/* FBIOGET_VSCREENINFO / FBIOGET_FSCREENINFO for /dev/fb0 */
+
+
 typedef struct {
     char  id[16]; uint32_t smem_start; uint32_t smem_len;
     uint32_t type; uint32_t type_aux; uint32_t visual;
@@ -873,29 +866,29 @@ static int32_t lx_ioctl(uint32_t fd, uint32_t req, uint32_t arg) {
             memcpy(f->id, "Krypx FB", 9);
             f->smem_start  = (uint32_t)(uintptr_t)fb.backbuf;
             f->smem_len    = fb.pitch * fb.height;
-            f->type        = 0; /* FB_TYPE_PACKED_PIXELS */
-            f->visual      = 2; /* FB_VISUAL_TRUECOLOR */
+            f->type        = 0; 
+            f->visual      = 2; 
             f->line_length = fb.pitch;
             return 0;
         }
         return 0;
     }
-    /* isatty check */
+    
     if (req == 0x5401) return (fd<=2) ? 0 : -LINUX_ENOTTY;
     return 0;
 }
 
-/* ── fcntl ───────────────────────────────────────────────────────────────── */
+
 static int32_t lx_fcntl64(uint32_t fd, uint32_t cmd, uint32_t arg) {
     (void)fd; (void)arg;
-    if (cmd == 1) return 0; /* F_GETFD */
-    if (cmd == 2) return 0; /* F_SETFD */
-    if (cmd == 3) return 0; /* F_GETFL */
-    if (cmd == 4) return 0; /* F_SETFL */
+    if (cmd == 1) return 0; 
+    if (cmd == 2) return 0; 
+    if (cmd == 3) return 0; 
+    if (cmd == 4) return 0; 
     return 0;
 }
 
-/* ── readv / writev ──────────────────────────────────────────────────────── */
+
 static int32_t lx_readv(uint32_t fd, linux_iovec_t *iov, uint32_t iovcnt) {
     int32_t total = 0;
     uint32_t i;
@@ -918,7 +911,7 @@ static int32_t lx_writev(uint32_t fd, linux_iovec_t *iov, uint32_t iovcnt) {
     return total;
 }
 
-/* ── select / poll ───────────────────────────────────────────────────────── */
+
 static int32_t lx_select(uint32_t nfds, uint32_t *readfds, uint32_t *writefds,
                            uint32_t *exceptfds, linux_timeval_t *timeout) {
     (void)nfds; (void)readfds; (void)writefds; (void)exceptfds; (void)timeout;
@@ -931,24 +924,24 @@ static int32_t lx_poll(linux_pollfd_t *fds, uint32_t nfds, int32_t timeout) {
     return 0;
 }
 
-/* ── getrlimit ───────────────────────────────────────────────────────────── */
+
 static int32_t lx_getrlimit(uint32_t resource, linux_rlimit_t *rlim) {
     if (!rlim) return -LINUX_EINVAL;
     rlim->rlim_cur = 0xFFFFFFFFU;
     rlim->rlim_max = 0xFFFFFFFFU;
-    if (resource == 7) { /* RLIMIT_NOFILE */
+    if (resource == 7) { 
         rlim->rlim_cur = MAX_FDS;
         rlim->rlim_max = MAX_FDS;
     }
     return 0;
 }
 
-/* ── futex ───────────────────────────────────────────────────────────────── */
+
 static int32_t lx_futex(uint32_t *uaddr, int32_t op, uint32_t val,
                           linux_timespec_t *timeout, uint32_t *uaddr2, uint32_t val3) {
     (void)timeout; (void)uaddr2; (void)val3;
     int32_t cmd = op & 0x7F;
-    if (cmd == 0) { /* FUTEX_WAIT */
+    if (cmd == 0) { 
         if (uaddr && *uaddr == val) {
             uint32_t t0 = timer_get_ticks();
             while (*uaddr == val && timer_get_ticks()-t0 < 10)
@@ -956,13 +949,13 @@ static int32_t lx_futex(uint32_t *uaddr, int32_t op, uint32_t val,
         }
         return 0;
     }
-    if (cmd == 1) { /* FUTEX_WAKE */
+    if (cmd == 1) { 
         return 0;
     }
     return 0;
 }
 
-/* ── set_thread_area / set_tid_addr ──────────────────────────────────────── */
+
 typedef struct {
     int32_t  entry_number;
     uint32_t base_addr;
@@ -982,37 +975,37 @@ static int32_t lx_set_tid_addr(uint32_t *tidptr) {
     return lx_getpid();
 }
 
-/* ── socketcall ──────────────────────────────────────────────────────────── */
+
 static int32_t lx_socketcall(uint32_t call, uint32_t *args) {
     if (!args) return -LINUX_EINVAL;
     switch (call) {
-        case 1: { /* socket(domain, type, proto) */
+        case 1: { 
             return socket_create((int)args[0], (int)args[1], (int)args[2]);
         }
-        case 2: { /* bind — stub */
+        case 2: { 
             return 0;
         }
-        case 3: { /* connect(fd, sockaddr_in*, addrlen) */
+        case 3: { 
             sockaddr_in_t *sa = (sockaddr_in_t *)args[1];
             if (!sa) return -LINUX_EINVAL;
-            /* port in network byte order → host order */
+            
             uint16_t port = (uint16_t)(((sa->port & 0xFF) << 8) | (sa->port >> 8));
             return socket_connect((int)args[0], sa->addr, port);
         }
-        case 9: { /* send(fd, buf, len, flags) */
+        case 9: { 
             return socket_send((int)args[0], (void*)args[1], (uint16_t)args[2]);
         }
-        case 10: { /* recv(fd, buf, len, flags) */
+        case 10: { 
             return socket_recv((int)args[0], (void*)args[1], (uint16_t)args[2]);
         }
-        case 6: { /* close */
+        case 6: { 
             return socket_close((int)args[0]);
         }
         default: return -LINUX_ENOSYS;
     }
 }
 
-/* ── mmap (old, syscall 90) ──────────────────────────────────────────────── */
+
 typedef struct {
     uint32_t addr, len, prot, flags;
     int32_t  fd;
@@ -1024,26 +1017,26 @@ static int32_t lx_old_mmap(linux_mmap_args_t *a) {
     return lx_mmap2(a->addr, a->len, a->prot, a->flags, a->fd, a->offset >> 12);
 }
 
-/* ── ftruncate ───────────────────────────────────────────────────────────── */
+
 static int32_t lx_ftruncate(uint32_t fd, uint32_t length) {
     process_t *p = process_current();
     if (!p || fd >= MAX_FDS || !p->fds[fd]) return -LINUX_EBADF;
     if (IS_DEV_FD(p->fds[fd])) return -LINUX_EINVAL;
-    (void)length; /* truncate not implemented in VFS */
+    (void)length; 
     return 0;
 }
 
-/* ── umask ───────────────────────────────────────────────────────────────── */
+
 static uint32_t g_umask = 022;
 static int32_t lx_umask(uint32_t mask) { uint32_t old=g_umask; g_umask=mask; return (int32_t)old; }
 
-/* ── chmod / chown ───────────────────────────────────────────────────────── */
+
 static int32_t lx_chmod(const char *path, uint32_t mode) { (void)path;(void)mode; return 0; }
 static int32_t lx_chown(const char *path, uint32_t uid, uint32_t gid) { (void)path;(void)uid;(void)gid; return 0; }
 static int32_t lx_fchmod(uint32_t fd, uint32_t mode) { (void)fd;(void)mode; return 0; }
 static int32_t lx_fchown(uint32_t fd, uint32_t uid, uint32_t gid) { (void)fd;(void)uid;(void)gid; return 0; }
 
-/* ── sigaction / signal ──────────────────────────────────────────────────── */
+
 static int32_t lx_rt_sigaction(int32_t sig, void *act, void *oact, uint32_t sz) {
     (void)sig;(void)act;(void)oact;(void)sz;
     return 0;
@@ -1055,9 +1048,9 @@ static int32_t lx_rt_sigprocmask(int32_t how, void *set, void *oset, uint32_t sz
 static int32_t lx_sigaltstack(void *ss, void *oss) { (void)ss;(void)oss; return 0; }
 static int32_t lx_rt_sigreturn(void) { return 0; }
 
-/* ── getdents (old, 32-bit) ──────────────────────────────────────────────── */
+
 static int32_t lx_getdents(uint32_t fd, linux_dirent_t *dirp, uint32_t count) {
-    /* Route through getdents64 with conversion */
+    
     process_t *p = process_current();
     if (!p || fd >= MAX_FDS || !p->fds[fd]) return -LINUX_EBADF;
     if (IS_DEV_FD(p->fds[fd])) return -LINUX_ENOTDIR;
@@ -1085,25 +1078,22 @@ static int32_t lx_getdents(uint32_t fd, linux_dirent_t *dirp, uint32_t count) {
     return (int32_t)written;
 }
 
-/* ── fsync ───────────────────────────────────────────────────────────────── */
+
 static int32_t lx_fsync(uint32_t fd) { (void)fd; return 0; }
 
-/* ── sched_yield ─────────────────────────────────────────────────────────── */
+
 static int32_t lx_sched_yield(void) { schedule(); return 0; }
 
-/* ── prctl ───────────────────────────────────────────────────────────────── */
+
 static int32_t lx_prctl(uint32_t op, uint32_t a, uint32_t b, uint32_t c, uint32_t d) {
     (void)op;(void)a;(void)b;(void)c;(void)d;
     return 0;
 }
 
-/* ──────────────────────────────────────────────────────────────────────────
- * Main syscall dispatcher
- * ──────────────────────────────────────────────────────────────────────────*/
 void linux_syscall_handler(registers_t *regs) {
     int32_t ret = -LINUX_ENOSYS;
 
-    /* Debug: trace first few syscalls on serial */
+    
     {
         static uint32_t dbg_count = 0;
         if (dbg_count < 20) {
@@ -1118,48 +1108,48 @@ void linux_syscall_handler(registers_t *regs) {
     }
 
     switch (regs->rax) {
-    /* exit */
+    
     case 1:   ret = lx_exit((int32_t)regs->rbx); break;
     case 252: ret = lx_exit((int32_t)regs->rbx); break;
 
-    /* fork / clone / vfork */
+    
     case 2:   ret = lx_fork(); break;
     case 120: ret = lx_clone(regs->rbx,regs->rcx,regs->rdx,regs->rsi,regs->rdi); break;
     case 190: ret = lx_fork(); break;
 
-    /* read / write / open / close */
+    
     case 3:   ret = lx_read(regs->rbx, (char*)regs->rcx, regs->rdx); break;
     case 4:   ret = lx_write(regs->rbx, (const char*)regs->rcx, regs->rdx); break;
     case 5:   ret = lx_open((const char*)regs->rbx, regs->rcx, regs->rdx); break;
     case 6:   ret = lx_close(regs->rbx); break;
 
-    /* wait */
+    
     case 7:   ret = lx_wait4((int32_t)regs->rbx,(int32_t*)regs->rcx,regs->rdx,0); break;
     case 114: ret = lx_wait4((int32_t)regs->rbx,(int32_t*)regs->rcx,(int32_t)regs->rdx,(void*)regs->rsi); break;
 
-    /* lseek / llseek */
+    
     case 19:  ret = lx_lseek(regs->rbx, (int32_t)regs->rcx, regs->rdx); break;
     case 140: ret = lx_llseek(regs->rbx, regs->rcx, regs->rdx, (int64_t*)regs->rsi, regs->rdi); break;
 
-    /* dup */
+    
     case 41:  ret = lx_dup(regs->rbx); break;
     case 63:  ret = lx_dup2(regs->rbx, regs->rcx); break;
 
-    /* pipe */
+    
     case 42:  ret = lx_pipe((int32_t*)regs->rbx); break;
 
-    /* getpid / getppid / gettid */
+    
     case 20:  ret = lx_getpid(); break;
     case 64:  ret = lx_getppid(); break;
     case 224: ret = lx_gettid(); break;
 
-    /* uid / gid */
+    
     case 24: case 199: ret = lx_getuid(); break;
     case 47: case 200: ret = lx_getgid(); break;
     case 49: case 201: ret = lx_geteuid(); break;
     case 50: case 202: ret = lx_getegid(); break;
 
-    /* memory */
+    
     case 45:  ret = lx_brk(regs->rbx); break;
     case 90:  ret = lx_old_mmap((linux_mmap_args_t*)regs->rbx); break;
     case 91:  ret = lx_munmap(regs->rbx, regs->rcx); break;
@@ -1168,7 +1158,7 @@ void linux_syscall_handler(registers_t *regs) {
     case 192: ret = lx_mmap2(regs->rbx, regs->rcx, regs->rdx, regs->rsi,
                               (int32_t)regs->rdi, regs->rbp); break;
 
-    /* file info */
+    
     case 33:  ret = lx_access((const char*)regs->rbx, regs->rcx); break;
     case 85:  ret = lx_readlink((const char*)regs->rbx,(char*)regs->rcx,regs->rdx); break;
     case 106: ret = lx_stat((const char*)regs->rbx,(linux_stat_t*)regs->rcx); break;
@@ -1178,17 +1168,17 @@ void linux_syscall_handler(registers_t *regs) {
     case 196: ret = lx_lstat64((const char*)regs->rbx,(linux_stat64_t*)regs->rcx); break;
     case 197: ret = lx_fstat64(regs->rbx,(linux_stat64_t*)regs->rcx); break;
 
-    /* directory */
+    
     case 141: ret = lx_getdents(regs->rbx,(linux_dirent_t*)regs->rcx,regs->rdx); break;
     case 220: ret = lx_getdents64(regs->rbx,(linux_dirent64_t*)regs->rcx,regs->rdx); break;
     case 12:  ret = lx_chdir((const char*)regs->rbx); break;
     case 183: ret = lx_getcwd((char*)regs->rbx, regs->rcx); break;
     case 39:  ret = lx_mkdir((const char*)regs->rbx, regs->rcx); break;
     case 10:  ret = lx_unlink((const char*)regs->rbx); break;
-    case 40:  ret = 0; break; /* rmdir stub */
+    case 40:  ret = 0; break; 
     case 38:  ret = lx_rename((const char*)regs->rbx,(const char*)regs->rcx); break;
 
-    /* file ops */
+    
     case 54:  ret = lx_ioctl(regs->rbx, regs->rcx, regs->rdx); break;
     case 55:  ret = lx_fcntl64(regs->rbx, regs->rcx, regs->rdx); break;
     case 221: ret = lx_fcntl64(regs->rbx, regs->rcx, regs->rdx); break;
@@ -1202,36 +1192,36 @@ void linux_syscall_handler(registers_t *regs) {
     case 182: ret = lx_chown((const char*)regs->rbx, regs->rcx, regs->rdx); break;
     case 207: ret = lx_fchown(regs->rbx, regs->rcx, regs->rdx); break;
 
-    /* readv / writev */
+    
     case 145: ret = lx_readv(regs->rbx,(linux_iovec_t*)regs->rcx,regs->rdx); break;
     case 146: ret = lx_writev(regs->rbx,(linux_iovec_t*)regs->rcx,regs->rdx); break;
 
-    /* select / poll */
+    
     case 82: case 142: ret = lx_select(regs->rbx,(uint32_t*)regs->rcx,(uint32_t*)regs->rdx,(uint32_t*)regs->rsi,(linux_timeval_t*)regs->rdi); break;
     case 168: ret = lx_poll((linux_pollfd_t*)regs->rbx,regs->rcx,(int32_t)regs->rdx); break;
 
-    /* time */
+    
     case 13:  ret = lx_time((uint32_t*)regs->rbx); break;
     case 78:  ret = lx_gettimeofday((linux_timeval_t*)regs->rbx,(void*)regs->rcx); break;
     case 162: ret = lx_nanosleep((linux_timespec_t*)regs->rbx,(linux_timespec_t*)regs->rcx); break;
     case 265: ret = lx_clock_gettime(regs->rbx,(linux_timespec_t*)regs->rcx); break;
     case 263: ret = lx_clock_gettime(regs->rbx,(linux_timespec_t*)regs->rcx); break;
 
-    /* sysinfo */
+    
     case 116: ret = lx_sysinfo((linux_sysinfo_t*)regs->rbx); break;
     case 122: ret = lx_uname((linux_utsname_t*)regs->rbx); break;
 
-    /* futex / threading */
+    
     case 240: ret = lx_futex((uint32_t*)regs->rbx,(int32_t)regs->rcx,regs->rdx,(linux_timespec_t*)regs->rsi,(uint32_t*)regs->rdi,regs->rbp); break;
     case 243: ret = lx_set_thread_area((linux_user_desc_t*)regs->rbx); break;
     case 258: ret = lx_set_tid_addr((uint32_t*)regs->rbx); break;
     case 158: ret = lx_sched_yield(); break;
     case 172: ret = lx_prctl(regs->rbx,regs->rcx,regs->rdx,regs->rsi,regs->rdi); break;
 
-    /* rlimit */
+    
     case 75: case 76: case 191: ret = lx_getrlimit(regs->rbx,(linux_rlimit_t*)regs->rcx); break;
 
-    /* signals */
+    
     case 48:  ret = 0; break;
     case 67:  ret = 0; break;
     case 119: ret = lx_rt_sigreturn(); break;
@@ -1240,30 +1230,30 @@ void linux_syscall_handler(registers_t *regs) {
     case 175: ret = lx_rt_sigprocmask((int32_t)regs->rbx,(void*)regs->rcx,(void*)regs->rdx,regs->rsi); break;
     case 186: ret = lx_sigaltstack((void*)regs->rbx,(void*)regs->rcx); break;
 
-    /* socket */
+    
     case 102: ret = lx_socketcall(regs->rbx,(uint32_t*)regs->rcx); break;
 
-    /* misc stubs that must return success */
-    case 37:  ret = 0; break; /* kill */
-    case 57:  ret = 0; break; /* setpgid */
-    case 65:  ret = (int32_t)lx_getpid(); break; /* getpgrp */
-    case 66:  ret = (int32_t)lx_getpid(); break; /* setsid */
-    case 126: ret = 0; break; /* sigprocmask */
-    case 136: ret = 0; break; /* personality */
-    case 150: case 151: case 152: case 153: ret = 0; break; /* mlock/munlock */
-    case 154: case 155: case 156: case 157: ret = 0; break; /* sched_ */
-    case 159: ret = 99; break; /* sched_get_priority_max */
-    case 160: ret = 0;  break; /* sched_get_priority_min */
-    case 209: case 165: ret = 0; break; /* getresuid/setresuid */
-    case 170: case 171: ret = 0; break; /* setresgid/getresgid */
-    case 203: case 204: ret = 0; break; /* setreuid/setregid */
-    case 213: ret = 0; break; /* setuid32 */
-    case 214: ret = 0; break; /* setgid32 */
-    case 218: ret = 0; break; /* mincore */
-    case 219: ret = 0; break; /* madvise */
-    case 225: ret = 0; break; /* readahead */
-    case 226: case 227: case 228: ret = 0; break; /* xattr */
-    case 270: case 271: case 272: ret = 0; break; /* pselect/ppoll */
+    
+    case 37:  ret = 0; break; 
+    case 57:  ret = 0; break; 
+    case 65:  ret = (int32_t)lx_getpid(); break; 
+    case 66:  ret = (int32_t)lx_getpid(); break; 
+    case 126: ret = 0; break; 
+    case 136: ret = 0; break; 
+    case 150: case 151: case 152: case 153: ret = 0; break; 
+    case 154: case 155: case 156: case 157: ret = 0; break; 
+    case 159: ret = 99; break; 
+    case 160: ret = 0;  break; 
+    case 209: case 165: ret = 0; break; 
+    case 170: case 171: ret = 0; break; 
+    case 203: case 204: ret = 0; break; 
+    case 213: ret = 0; break; 
+    case 214: ret = 0; break; 
+    case 218: ret = 0; break; 
+    case 219: ret = 0; break; 
+    case 225: ret = 0; break; 
+    case 226: case 227: case 228: ret = 0; break; 
+    case 270: case 271: case 272: ret = 0; break; 
 
     default:
         ret = -LINUX_ENOSYS;
@@ -1273,4 +1263,4 @@ void linux_syscall_handler(registers_t *regs) {
     regs->rax = (uint32_t)ret;
 }
 
-void linux_compat_init(void) { /* nothing needed */ }
+void linux_compat_init(void) {  }

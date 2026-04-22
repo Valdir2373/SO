@@ -16,7 +16,7 @@
 #define ED_TOOLBAR_H   28
 #define ED_MAX_LINES  200
 #define ED_MAX_COLS   120
-#define ED_LNUM_W      32   /* width of line-number gutter */
+#define ED_LNUM_W      32   
 
 static window_t *ed_win = NULL;
 
@@ -28,7 +28,7 @@ static int    ed_scroll_row = 0;
 static bool   ed_modified   = false;
 static char   ed_filepath[256];
 
-/* Open-file prompt */
+
 static bool   ed_prompt_active = false;
 static bool   ed_prompt_save   = false;
 static char   ed_prompt_buf[256];
@@ -81,7 +81,7 @@ static void ed_save_file(const char *path) {
     if (!path || !path[0]) return;
     strncpy(ed_filepath, path, 255); ed_filepath[255] = 0;
 
-    /* Build flat buffer */
+    
     uint32_t total = 0;
     int r;
     for (r = 0; r < ed_line_count; r++) total += strlen(ed_lines[r]) + 1;
@@ -118,14 +118,14 @@ static void ed_on_paint(window_t *win) {
 
     canvas_fill_rect(bx, by, bw, bh, 0x001E1E2E);
 
-    /* Toolbar */
+    
     canvas_fill_rect(bx, by, bw, ED_TOOLBAR_H, 0x00252535);
     canvas_fill_rounded_rect(bx + 4, by + 3, 50, 22, 4, 0x00333355);
     canvas_draw_string(bx + 8, by + 8, "Abrir", 0x0074B9FF, COLOR_TRANSPARENT);
     canvas_fill_rounded_rect(bx + 58, by + 3, 50, 22, 4, 0x00333355);
     canvas_draw_string(bx + 62, by + 8, "Salvar", 0x0000B894, COLOR_TRANSPARENT);
 
-    /* File name */
+    
     {
         const char *fname = ed_filepath[0] ? ed_filepath : "(sem titulo)";
         canvas_draw_string(bx + 116, by + 8, fname, 0x00636E72, COLOR_TRANSPARENT);
@@ -133,12 +133,12 @@ static void ed_on_paint(window_t *win) {
             canvas_draw_string(bx + bw - 20, by + 8, "*", 0x00FD9644, COLOR_TRANSPARENT);
     }
 
-    /* Text area */
+    
     int ta_y = by + ED_TOOLBAR_H;
     int ta_h = bh - ED_TOOLBAR_H - CHAR_HEIGHT - 4;
     int vis_rows = ta_h / CHAR_HEIGHT;
 
-    /* Line number gutter */
+    
     canvas_fill_rect(bx, ta_y, ED_LNUM_W, ta_h, 0x00171728);
 
     int r;
@@ -147,24 +147,24 @@ static void ed_on_paint(window_t *win) {
         if (ridx >= ed_line_count) break;
         int ry = ta_y + r * CHAR_HEIGHT;
 
-        /* Line number */
+        
         char lnum[8]; itoa(ridx + 1, lnum, 10);
         canvas_draw_string(bx + 2, ry, lnum, 0x00444466, COLOR_TRANSPARENT);
 
-        /* Highlight current line */
+        
         if (ridx == ed_cur_row)
             canvas_fill_rect(bx + ED_LNUM_W, ry, bw - ED_LNUM_W, CHAR_HEIGHT, 0x00252540);
 
         canvas_draw_string(bx + ED_LNUM_W + 4, ry, ed_lines[ridx], 0x00CCCCCC, COLOR_TRANSPARENT);
 
-        /* Cursor */
+        
         if (ridx == ed_cur_row && (timer_get_ticks() / 500) % 2 == 0) {
             int cx = bx + ED_LNUM_W + 4 + ed_cur_col * CHAR_WIDTH;
             canvas_fill_rect(cx, ry, 2, CHAR_HEIGHT, 0x00FFFFFF);
         }
     }
 
-    /* Status bar */
+    
     int sb_y = by + bh - CHAR_HEIGHT - 2;
     canvas_fill_rect(bx, sb_y, bw, CHAR_HEIGHT + 2, 0x00252535);
     char status[64];
@@ -179,7 +179,7 @@ static void ed_on_paint(window_t *win) {
         "Ctrl+O:abrir  Ctrl+S:salvar  Ctrl+W:fechar",
         0x00444444, COLOR_TRANSPARENT);
 
-    /* Prompt overlay */
+    
     if (ed_prompt_active) {
         int ox = bx + bw/2 - 160, oy = by + bh/2 - 35;
         canvas_fill_rounded_rect(ox, oy, 320, 70, 6, 0x00263545);
@@ -223,7 +223,7 @@ static void ed_backspace(void) {
         ed_cur_col--;
         ed_modified = true;
     } else if (ed_cur_row > 0) {
-        /* Merge with previous line */
+        
         char *prev = ed_lines[ed_cur_row - 1];
         char *cur  = ed_lines[ed_cur_row];
         int plen = strlen(prev);
@@ -231,7 +231,7 @@ static void ed_backspace(void) {
         if (plen + clen <= ED_MAX_COLS) {
             memcpy(prev + plen, cur, (uint32_t)(clen + 1));
             ed_cur_col = plen;
-            /* Shift lines up */
+            
             int i;
             for (i = ed_cur_row; i < ed_line_count - 1; i++)
                 memcpy(ed_lines[i], ed_lines[i+1], (uint32_t)(strlen(ed_lines[i+1]) + 1));
@@ -247,11 +247,11 @@ static void ed_newline(void) {
     if (ed_line_count >= ED_MAX_LINES) return;
     char *line = ed_lines[ed_cur_row];
     int len = strlen(line);
-    /* Shift lines down */
+    
     int i;
     for (i = ed_line_count; i > ed_cur_row + 1; i--)
         memcpy(ed_lines[i], ed_lines[i-1], (uint32_t)(strlen(ed_lines[i-1]) + 1));
-    /* Split current line */
+    
     strncpy(ed_lines[ed_cur_row + 1], line + ed_cur_col, (uint32_t)(len - ed_cur_col));
     ed_lines[ed_cur_row + 1][len - ed_cur_col] = 0;
     line[ed_cur_col] = 0;
@@ -259,7 +259,7 @@ static void ed_newline(void) {
     ed_cur_row++;
     ed_cur_col = 0;
     ed_modified = true;
-    /* Scroll */
+    
     int vis = (ed_win ? (ed_win->content_h - ED_TOOLBAR_H - CHAR_HEIGHT - 4) / CHAR_HEIGHT : 20);
     if (ed_cur_row >= ed_scroll_row + vis) ed_scroll_row = ed_cur_row - vis + 1;
 }
@@ -286,32 +286,32 @@ static void ed_on_keydown(window_t *win, char key) {
         return;
     }
 
-    if (key == 15 /* Ctrl+O */) {
+    if (key == 15 ) {
         ed_prompt_active = true; ed_prompt_save = false;
         ed_prompt_len = 0;
         if (ed_filepath[0]) { strncpy(ed_prompt_buf, ed_filepath, 255); ed_prompt_len = strlen(ed_prompt_buf); }
         else { ed_prompt_buf[0] = 0; }
         return;
     }
-    if (key == 19 /* Ctrl+S */) {
+    if (key == 19 ) {
         if (ed_filepath[0]) { ed_save_file(ed_filepath); }
         else { ed_prompt_active = true; ed_prompt_save = true; ed_prompt_len = 0; ed_prompt_buf[0] = 0; }
         return;
     }
-    if (key == 23 /* Ctrl+W */) {
+    if (key == 23 ) {
         if (ed_win) wm_close(ed_win);
         return;
     }
 
-    /* Arrow keys via ctrl codes: up=16, down=2, left=2... using vim-style hjkl as backup */
-    if (key == 16 /* Ctrl+P = up */ || key == 11 /* Ctrl+K */) {
+    
+    if (key == 16 ) {
         if (ed_cur_row > 0) {
             ed_cur_row--;
             int l = strlen(ed_lines[ed_cur_row]);
             if (ed_cur_col > l) ed_cur_col = l;
             if (ed_cur_row < ed_scroll_row) ed_scroll_row = ed_cur_row;
         }
-    } else if (key == 14 /* Ctrl+N = down */ || key == 10 /* Ctrl+J */) {
+    } else if (key == 14 ) {
         if (ed_cur_row < ed_line_count - 1) {
             ed_cur_row++;
             int l = strlen(ed_lines[ed_cur_row]);
@@ -319,22 +319,22 @@ static void ed_on_keydown(window_t *win, char key) {
             int vis = (ed_win->content_h - ED_TOOLBAR_H - CHAR_HEIGHT - 4) / CHAR_HEIGHT;
             if (ed_cur_row >= ed_scroll_row + vis) ed_scroll_row = ed_cur_row - vis + 1;
         }
-    } else if (key == 2 /* Ctrl+B = left */) {
+    } else if (key == 2 ) {
         if (ed_cur_col > 0) ed_cur_col--;
         else if (ed_cur_row > 0) { ed_cur_row--; ed_cur_col = strlen(ed_lines[ed_cur_row]); }
-    } else if (key == 6 /* Ctrl+F = right */) {
+    } else if (key == 6 ) {
         int l = strlen(ed_lines[ed_cur_row]);
         if (ed_cur_col < l) ed_cur_col++;
         else if (ed_cur_row < ed_line_count - 1) { ed_cur_row++; ed_cur_col = 0; }
-    } else if (key == 1 /* Ctrl+A = home */) {
+    } else if (key == 1 ) {
         ed_cur_col = 0;
-    } else if (key == 5 /* Ctrl+E = end */) {
+    } else if (key == 5 ) {
         ed_cur_col = strlen(ed_lines[ed_cur_row]);
     } else if (key == '\n') {
         ed_newline();
     } else if (key == '\b') {
         ed_backspace();
-    } else if (key == 127 /* DEL */) {
+    } else if (key == 127 ) {
         ed_delete_char();
     } else if ((unsigned char)key >= 32 && key != 127) {
         ed_insert_char(key);

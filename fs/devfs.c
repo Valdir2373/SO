@@ -1,8 +1,3 @@
-/*
- * fs/devfs.c — Virtual /dev filesystem.
- * Provides /dev/null, /dev/zero, /dev/urandom, /dev/random, /dev/tty, /dev/fb0.
- * Mounted via vfs_mount("/dev", ...) so Linux apps find standard device paths.
- */
 
 #include <fs/devfs.h>
 #include <fs/vfs.h>
@@ -14,17 +9,17 @@
 #include <lib/string.h>
 #include <types.h>
 
-/* ── /dev/null ────────────────────────────────────────────────────────────── */
+
 static uint32_t null_read(vfs_node_t *n, uint32_t off, uint32_t sz, uint8_t *buf)
 { (void)n;(void)off;(void)sz;(void)buf; return 0; }
 static uint32_t null_write(vfs_node_t *n, uint32_t off, uint32_t sz, const uint8_t *buf)
 { (void)n;(void)off;(void)buf; return sz; }
 
-/* ── /dev/zero ────────────────────────────────────────────────────────────── */
+
 static uint32_t zero_read(vfs_node_t *n, uint32_t off, uint32_t sz, uint8_t *buf)
 { (void)n;(void)off; memset(buf,0,sz); return sz; }
 
-/* ── /dev/urandom ─────────────────────────────────────────────────────────── */
+
 static uint64_t g_rng = 0xDEADBEEFCAFEBABEULL;
 static uint32_t urandom_read(vfs_node_t *n, uint32_t off, uint32_t sz, uint8_t *buf) {
     (void)n;(void)off;
@@ -39,7 +34,7 @@ static uint32_t urandom_read(vfs_node_t *n, uint32_t off, uint32_t sz, uint8_t *
     return sz;
 }
 
-/* ── /dev/tty ─────────────────────────────────────────────────────────────── */
+
 static uint32_t tty_read(vfs_node_t *n, uint32_t off, uint32_t sz, uint8_t *buf) {
     (void)n;(void)off;
     uint32_t i = 0;
@@ -58,7 +53,7 @@ static uint32_t tty_write(vfs_node_t *n, uint32_t off, uint32_t sz, const uint8_
     return sz;
 }
 
-/* ── /dev/fb0 ─────────────────────────────────────────────────────────────── */
+
 static uint32_t fb0_read(vfs_node_t *n, uint32_t off, uint32_t sz, uint8_t *buf) {
     (void)n;
     extern framebuffer_t fb;
@@ -80,9 +75,9 @@ static uint32_t fb0_write(vfs_node_t *n, uint32_t off, uint32_t sz, const uint8_
     return sz;
 }
 
-/* ── /dev/stdin, stdout, stderr (alias tty) ───────────────────────────────── */
 
-/* ── device table ─────────────────────────────────────────────────────────── */
+
+
 #define NDEVS 8
 
 static const char *dev_names[NDEVS] = {
@@ -124,32 +119,32 @@ void devfs_init(void) {
         dev_dirents[i].type  = VFS_CHARDEV;
     }
 
-    /* /dev/null */
+    
     dev_nodes[0].read  = null_read;
     dev_nodes[0].write = null_write;
-    /* /dev/zero */
+    
     dev_nodes[1].read  = zero_read;
     dev_nodes[1].write = null_write;
-    /* /dev/urandom */
+    
     dev_nodes[2].read  = urandom_read;
     dev_nodes[2].write = null_write;
-    /* /dev/random (same as urandom) */
+    
     dev_nodes[3].read  = urandom_read;
     dev_nodes[3].write = null_write;
-    /* /dev/tty */
+    
     dev_nodes[4].read  = tty_read;
     dev_nodes[4].write = tty_write;
-    /* /dev/fb0 */
+    
     dev_nodes[5].read  = fb0_read;
     dev_nodes[5].write = fb0_write;
-    dev_nodes[5].impl  = 0xFB0;     /* magic used by lx64_mmap to detect fb mmap */
-    /* /dev/stdin, /dev/stdout (alias tty) */
+    dev_nodes[5].impl  = 0xFB0;     
+    
     dev_nodes[6].read  = tty_read;
     dev_nodes[6].write = tty_write;
     dev_nodes[7].read  = null_read;
     dev_nodes[7].write = tty_write;
 
-    /* /dev directory node */
+    
     memset(&dev_dir, 0, sizeof(vfs_node_t));
     strncpy(dev_dir.name, "dev", 255);
     dev_dir.flags       = VFS_DIRECTORY;

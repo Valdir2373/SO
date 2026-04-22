@@ -11,7 +11,7 @@
 #define MAX_FDS            16
 #define KERNEL_STACK_SIZE  8192
 
-/* Terminal I/O pipe — bridges Linux shell stdout/stdin to the GUI terminal */
+
 #define TERM_PIPE_SIZE     8192
 typedef struct {
     uint8_t  buf[TERM_PIPE_SIZE];
@@ -30,7 +30,7 @@ typedef enum {
 #define COMPAT_LINUX   1
 #define COMPAT_WINDOWS 2
 
-/* Saved register context for context switching (must match switch.asm offsets) */
+
 typedef struct {
     uint64_t rax, rbx, rcx, rdx;
     uint64_t rsi, rdi, rbp, rsp;
@@ -49,8 +49,8 @@ typedef struct process {
 
     context_t     ctx;
 
-    pml4e_t      *page_dir;      /* PML4 for this process */
-    uint64_t      kernel_stack;  /* RSP0 (top of kernel stack) */
+    pml4e_t      *page_dir;      
+    uint64_t      kernel_stack;  
     uint64_t      user_stack;
 
     uint64_t      heap_start;
@@ -66,22 +66,22 @@ typedef struct process {
     void         *mem_block;
     uint64_t      mem_size;
 
-    char          cwd[256];          /* current working directory */
-    uint32_t      children[8];       /* PIDs of child processes */
+    char          cwd[256];          
+    uint32_t      children[8];       
     uint32_t      nchildren;
-    bool          waiting_child;     /* blocked in waitpid */
-    int32_t       wait_result;       /* exit code of waited child */
+    bool          waiting_child;     
+    int32_t       wait_result;       
 
-    /* Linux shell I/O bridge (WSL-style) */
-    term_pipe_t  *stdin_pipe;        /* GUI writes here; process reads fd 0 */
-    term_pipe_t  *stdout_pipe;       /* process writes fd 1/2; GUI reads here */
-    bool          wait_stdin;        /* blocked waiting for stdin data */
+    
+    term_pipe_t  *stdin_pipe;        
+    term_pipe_t  *stdout_pipe;       
+    bool          wait_stdin;        
 
-    /* fork() resumption state — set by lx64_fork before adding child to scheduler */
+    
     uint64_t      fork_user_rip;
     uint64_t      fork_user_rsp;
     uint64_t      fork_user_rflags;
-    uint64_t      fork_tls;        /* FS base for CLONE_SETTLS threads */
+    uint64_t      fork_tls;        
 
     struct process *parent;
     struct process *next;
@@ -97,9 +97,9 @@ process_t *process_get(uint32_t pid);
 process_t *process_create_app(const char *name, uint64_t mem_bytes);
 void       process_kill(uint32_t pid);
 void       process_iterate(void (*cb)(process_t *p, void *ctx), void *ctx);
-void       process_child_exited(process_t *child);  /* wake waiting parent */
-void       process_stdin_push(process_t *p, char c);  /* send char to process stdin */
-int        process_stdout_read(process_t *p);          /* read char from process stdout (-1=empty) */
+void       process_child_exited(process_t *child);  
+void       process_stdin_push(process_t *p, char c);  
+int        process_stdout_read(process_t *p);          
 process_t *process_fork(process_t *parent, uint64_t kstack_entry);
 void __attribute__((noreturn)) fork_child_complete(void);
 

@@ -1,8 +1,3 @@
-/*
- * fs/procfs.c — Virtual /proc filesystem.
- * Provides /proc/cpuinfo, /proc/meminfo, /proc/version, /proc/stat,
- * /proc/mounts, /proc/sys/kernel/, /proc/self/{maps,status,exe,fd/}.
- */
 
 #include <fs/procfs.h>
 #include <fs/vfs.h>
@@ -12,7 +7,7 @@
 #include <lib/string.h>
 #include <types.h>
 
-/* ── string helpers ───────────────────────────────────────────────────────── */
+
 static int p_puts(char *b, int pos, const char *s) {
     while (*s) b[pos++] = *s++;
     return pos;
@@ -32,11 +27,11 @@ static int p_puth(char *b, int pos, uint64_t v, int w) {
     return pos;
 }
 
-/* shared no-op write */
+
 static uint32_t noop_write(vfs_node_t *n, uint32_t off, uint32_t sz, const uint8_t *buf)
 { (void)n;(void)off;(void)buf; return sz; }
 
-/* ── /proc/cpuinfo ────────────────────────────────────────────────────────── */
+
 static uint32_t cpuinfo_read(vfs_node_t *n, uint32_t off, uint32_t sz, uint8_t *buf) {
     (void)n;
     static char content[2048];
@@ -62,7 +57,7 @@ static uint32_t cpuinfo_read(vfs_node_t *n, uint32_t off, uint32_t sz, uint8_t *
     memcpy(buf, content + off, nb); return nb;
 }
 
-/* ── /proc/meminfo ────────────────────────────────────────────────────────── */
+
 static uint32_t meminfo_read(vfs_node_t *n, uint32_t off, uint32_t sz, uint8_t *buf) {
     (void)n;
     char content[1024];
@@ -86,7 +81,7 @@ static uint32_t meminfo_read(vfs_node_t *n, uint32_t off, uint32_t sz, uint8_t *
     memcpy(buf, content + off, nb); return nb;
 }
 
-/* ── /proc/version ────────────────────────────────────────────────────────── */
+
 static uint32_t version_read(vfs_node_t *n, uint32_t off, uint32_t sz, uint8_t *buf) {
     (void)n;
     const char *v = "Linux version 5.15.0-krypx (gcc version 12.0.0) #1 SMP Krypx OS\n";
@@ -96,7 +91,7 @@ static uint32_t version_read(vfs_node_t *n, uint32_t off, uint32_t sz, uint8_t *
     memcpy(buf, v + off, nb); return nb;
 }
 
-/* ── /proc/stat ───────────────────────────────────────────────────────────── */
+
 static uint32_t stat_read(vfs_node_t *n, uint32_t off, uint32_t sz, uint8_t *buf) {
     (void)n;
     char content[512];
@@ -113,7 +108,7 @@ static uint32_t stat_read(vfs_node_t *n, uint32_t off, uint32_t sz, uint8_t *buf
     memcpy(buf, content + off, nb); return nb;
 }
 
-/* ── /proc/mounts ─────────────────────────────────────────────────────────── */
+
 static uint32_t mounts_read(vfs_node_t *n, uint32_t off, uint32_t sz, uint8_t *buf) {
     (void)n;
     const char *m =
@@ -127,7 +122,7 @@ static uint32_t mounts_read(vfs_node_t *n, uint32_t off, uint32_t sz, uint8_t *b
     memcpy(buf, m + off, nb); return nb;
 }
 
-/* ── /proc/sys/kernel/overcommit_memory ──────────────────────────────────── */
+
 static uint32_t overcommit_read(vfs_node_t *n, uint32_t off, uint32_t sz, uint8_t *buf) {
     (void)n;
     const char *v = "1\n";
@@ -145,7 +140,7 @@ static uint32_t hostname_read(vfs_node_t *n, uint32_t off, uint32_t sz, uint8_t 
     memcpy(buf, h + off, nb); return nb;
 }
 
-/* ── /proc/self/maps ──────────────────────────────────────────────────────── */
+
 static uint32_t maps_read(vfs_node_t *n, uint32_t off, uint32_t sz, uint8_t *buf) {
     (void)n;
     static char content[4096];
@@ -174,7 +169,7 @@ static uint32_t maps_read(vfs_node_t *n, uint32_t off, uint32_t sz, uint8_t *buf
     memcpy(buf, content + off, nb); return nb;
 }
 
-/* ── /proc/self/status ────────────────────────────────────────────────────── */
+
 static uint32_t pstatus_read(vfs_node_t *n, uint32_t off, uint32_t sz, uint8_t *buf) {
     (void)n;
     char content[1024];
@@ -195,7 +190,7 @@ static uint32_t pstatus_read(vfs_node_t *n, uint32_t off, uint32_t sz, uint8_t *
     memcpy(buf, content + off, nb); return nb;
 }
 
-/* ── /proc/self/exe ───────────────────────────────────────────────────────── */
+
 static uint32_t exe_read(vfs_node_t *n, uint32_t off, uint32_t sz, uint8_t *buf) {
     (void)n;
     process_t *p = process_current();
@@ -210,7 +205,7 @@ static uint32_t exe_read(vfs_node_t *n, uint32_t off, uint32_t sz, uint8_t *buf)
     memcpy(buf, path + off, nb); return nb;
 }
 
-/* ── /proc/self/cmdline ───────────────────────────────────────────────────── */
+
 static uint32_t cmdline_read(vfs_node_t *n, uint32_t off, uint32_t sz, uint8_t *buf) {
     (void)n;
     process_t *p = process_current();
@@ -221,7 +216,7 @@ static uint32_t cmdline_read(vfs_node_t *n, uint32_t off, uint32_t sz, uint8_t *
     memcpy(buf, name + off, nb); return nb;
 }
 
-/* ── /proc/self/fd directory ──────────────────────────────────────────────── */
+
 static dirent_t  selffd_dirent_tmp;
 
 static dirent_t *selffd_readdir(vfs_node_t *n, uint32_t idx) {
@@ -232,7 +227,7 @@ static dirent_t *selffd_readdir(vfs_node_t *n, uint32_t idx) {
     for (i = 0; i < MAX_FDS; i++) {
         if (p->fds[i]) {
             if (count == idx) {
-                /* format fd number into name */
+                
                 char tmp[8]; int tp=0;
                 uint32_t v = i;
                 if (v == 0) { tmp[tp++]='0'; }
@@ -266,7 +261,7 @@ static vfs_node_t *selffd_finddir(vfs_node_t *n, const char *name) {
     return &selffd_node_tmp;
 }
 
-/* ── /proc/self directory ─────────────────────────────────────────────────── */
+
 #define NSELF 5
 static const char *self_entry_names[NSELF] = { "maps","status","exe","fd","cmdline" };
 static vfs_node_t  self_nodes[NSELF];
@@ -287,7 +282,7 @@ static vfs_node_t *selfdir_finddir(vfs_node_t *n, const char *name) {
     return 0;
 }
 
-/* ── /proc/sys/kernel directory ───────────────────────────────────────────── */
+
 static vfs_node_t syskernel_nodes[2];
 static vfs_node_t syskernel_dir;
 static vfs_node_t sys_dir;
@@ -317,7 +312,7 @@ static vfs_node_t *sysdir_finddir(vfs_node_t *n, const char *name) {
     return 0;
 }
 
-/* ── /proc directory ──────────────────────────────────────────────────────── */
+
 #define NPROC 7
 static const char *proc_entry_names[NPROC] = {
     "cpuinfo","meminfo","version","stat","mounts","self","sys"
@@ -339,17 +334,17 @@ static vfs_node_t *procdir_finddir(vfs_node_t *n, const char *name) {
     return 0;
 }
 
-/* ── init ─────────────────────────────────────────────────────────────────── */
+
 void procfs_init(void) {
     uint32_t i;
 
-    /* /proc/self/fd dir */
+    
     memset(&selffd_dir_node, 0, sizeof(vfs_node_t));
     strncpy(selffd_dir_node.name, "fd", 255);
     selffd_dir_node.flags   = VFS_DIRECTORY; selffd_dir_node.inode = 501;
     selffd_dir_node.readdir = selffd_readdir; selffd_dir_node.finddir = selffd_finddir;
 
-    /* /proc/self nodes */
+    
     for (i = 0; i < NSELF; i++) {
         memset(&self_nodes[i], 0, sizeof(vfs_node_t));
         strncpy(self_nodes[i].name, self_entry_names[i], 255);
@@ -361,18 +356,18 @@ void procfs_init(void) {
     self_nodes[0].read = maps_read;
     self_nodes[1].read = pstatus_read;
     self_nodes[2].read = exe_read;
-    /* node[3] = fd directory */
+    
     memcpy(&self_nodes[3], &selffd_dir_node, sizeof(vfs_node_t));
     self_dirents[3].type = VFS_DIRECTORY;
     self_nodes[4].read = cmdline_read;
 
-    /* /proc/self dir */
+    
     memset(&self_dir, 0, sizeof(vfs_node_t));
     strncpy(self_dir.name, "self", 255);
     self_dir.flags   = VFS_DIRECTORY; self_dir.inode = 499;
     self_dir.readdir = selfdir_readdir; self_dir.finddir = selfdir_finddir;
 
-    /* /proc/sys/kernel nodes */
+    
     memset(syskernel_nodes, 0, sizeof(syskernel_nodes));
     strncpy(syskernel_nodes[0].name, "overcommit_memory", 255);
     syskernel_nodes[0].flags = VFS_FILE; syskernel_nodes[0].inode = 900;
@@ -395,7 +390,7 @@ void procfs_init(void) {
     sys_dir.readdir = sysdir_readdir;
     sys_dir.finddir = sysdir_finddir;
 
-    /* /proc nodes */
+    
     for (i = 0; i < NPROC; i++) {
         memset(&proc_nodes[i], 0, sizeof(vfs_node_t));
         strncpy(proc_nodes[i].name, proc_entry_names[i], 255);

@@ -82,7 +82,7 @@ void schedule(void) {
 
     if (next == current) return;
 
-    /* Serial trace for first 5 context switches */
+    
     {
         static uint32_t sw_count = 0;
         if (sw_count < 5) {
@@ -115,7 +115,7 @@ void schedule(void) {
     process_set_current(current);
     tss_set_kernel_stack(current->kernel_stack);
 
-    /* Keep SYSCALL instruction's kernel RSP in sync with the running process */
+    
     if (current->kernel_stack) {
         extern uint64_t g_syscall_kernel_rsp;
         g_syscall_kernel_rsp = current->kernel_stack;

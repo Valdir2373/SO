@@ -1,5 +1,5 @@
 
-/* Image Viewer — exibe PNG/JPEG/BMP em uma janela com zoom e pan */
+
 
 #include <apps/image_viewer.h>
 #include <gui/window.h>
@@ -19,7 +19,7 @@
 
 static window_t *iv_win   = 0;
 static uint32_t *iv_pixels = 0;
-static int       iv_iw = 0, iv_ih = 0;  /* original image dimensions */
+static int       iv_iw = 0, iv_ih = 0;  
 static float     iv_zoom = 1.0f;
 static int       iv_pan_x = 0, iv_pan_y = 0;
 static char      iv_filename[128] = "";
@@ -34,7 +34,7 @@ static bool iv_load(const char *path) {
     iv_free();
     if (!path || !path[0]) return false;
 
-    /* Detect extension */
+    
     int plen = (int)strlen(path);
     const char *ext = path + plen;
     while (ext > path && *ext != '.') ext--;
@@ -76,7 +76,7 @@ static bool iv_load(const char *path) {
     iv_iw = nw;
     iv_ih = nh;
 
-    /* Auto-fit zoom */
+    
     int cw = iv_win ? iv_win->content_w : IV_MAX_W;
     int ch = iv_win ? iv_win->content_h - 28 : IV_MAX_H - 28;
     float zx = (float)cw / (float)nw;
@@ -103,7 +103,7 @@ static void iv_on_paint(window_t *win) {
         int oy = by + 28 + (ch - 28 - dh) / 2 + iv_pan_y;
         canvas_draw_scaled_bitmap(ox, oy, dw, dh, iv_pixels, iv_iw, iv_ih);
 
-        /* Zoom indicator */
+        
         char zstr[16];
         int zp = (int)(iv_zoom * 100.0f);
         char tmp[8]; int ti = 0;
@@ -114,15 +114,15 @@ static void iv_on_paint(window_t *win) {
         memcpy(zstr, tmp, (uint32_t)ti+1);
         canvas_draw_string(bx + 4, by + 6, zstr, 0x00DFE6E9, 0x00333333);
     } else {
-        /* No image loaded — show prompt */
+        
         canvas_draw_string(bx + cw/2 - 80, by + ch/2 - 8,
                            "Nenhuma imagem carregada", 0x00636E72, COLOR_TRANSPARENT);
     }
 
-    /* Toolbar */
+    
     canvas_fill_rect(bx, by, cw, 24, 0x001E272E);
 
-    /* Buttons: Abrir | Zoom+ | Zoom- | Ajustar */
+    
     int btnx = bx + 4;
     uint32_t btn_col = 0x00333344;
 
@@ -141,14 +141,14 @@ static void iv_on_paint(window_t *win) {
     canvas_fill_rounded_rect(btnx, by+2, 60, 20, 3, btn_col);
     canvas_draw_string(btnx+4, by+5, "Ajustar", 0x00DFE6E9, COLOR_TRANSPARENT);
 
-    /* Filename & status */
+    
     if (iv_filename[0])
         canvas_draw_string(bx + cw - 200, by + 6, iv_filename, 0x0074B9FF, COLOR_TRANSPARENT);
     if (iv_status[0])
         canvas_draw_string(bx + 4, by + ch - 16, iv_status, 0x00D63031, COLOR_TRANSPARENT);
 }
 
-/* ── Path input state ────────────────────────────────────────────────────── */
+
 static char iv_path_input[128] = "";
 static bool iv_path_active     = false;
 
@@ -173,7 +173,7 @@ static void iv_on_keydown(window_t *win, char key) {
         return;
     }
 
-    /* Zoom in/out with +/- */
+    
     if (key == '+' || key == '=') {
         iv_zoom *= 1.2f;
         if (iv_zoom > 8.0f) iv_zoom = 8.0f;
@@ -181,7 +181,7 @@ static void iv_on_keydown(window_t *win, char key) {
         iv_zoom /= 1.2f;
         if (iv_zoom < 0.05f) iv_zoom = 0.05f;
     } else if (key == 'f' || key == 'F') {
-        /* Fit */
+        
         if (iv_win && iv_iw > 0 && iv_ih > 0) {
             int cw2 = iv_win->content_w;
             int ch2 = iv_win->content_h - 28;
@@ -191,7 +191,7 @@ static void iv_on_keydown(window_t *win, char key) {
         }
         iv_pan_x = iv_pan_y = 0;
     } else if (key == 'o' || key == 'O') {
-        /* Open */
+        
         iv_path_active = true;
         iv_path_input[0] = '\0';
     }
@@ -200,21 +200,21 @@ static void iv_on_keydown(window_t *win, char key) {
 static void iv_on_click(window_t *win, int mx, int my) {
     int bx = win->content_x, by = win->content_y;
     if (my < by + 24) {
-        /* Toolbar click */
+        
         int bx2 = bx + 4;
-        if (mx >= bx2 && mx < bx2+52) { /* Abrir */
+        if (mx >= bx2 && mx < bx2+52) { 
             iv_path_active = true; iv_path_input[0] = '\0';
         } else {
             bx2 += 56;
-            if (mx >= bx2 && mx < bx2+36) { /* Z+ */
+            if (mx >= bx2 && mx < bx2+36) { 
                 iv_zoom *= 1.2f; if (iv_zoom > 8.0f) iv_zoom = 8.0f;
             } else {
                 bx2 += 40;
-                if (mx >= bx2 && mx < bx2+36) { /* Z- */
+                if (mx >= bx2 && mx < bx2+36) { 
                     iv_zoom /= 1.2f; if (iv_zoom < 0.05f) iv_zoom = 0.05f;
                 } else {
                     bx2 += 40;
-                    if (mx >= bx2 && mx < bx2+60) { /* Ajustar */
+                    if (mx >= bx2 && mx < bx2+60) { 
                         if (iv_iw > 0 && iv_ih > 0) {
                             int cw2 = win->content_w;
                             int ch2 = win->content_h - 28;

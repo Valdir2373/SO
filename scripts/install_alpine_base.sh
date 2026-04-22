@@ -1,21 +1,21 @@
-#!/usr/bin/env bash
-# scripts/install_alpine_base.sh
-# Instala o rootfs mínimo da Alpine Linux no disk.img do Krypx.
-#
-# O resultado é um subsistema Linux completo dentro do Krypx:
-#   /bin/sh         → busybox (shell interativo)
-#   /bin/busybox    → todos os utilitários (ls, cat, wget, etc.)
-#   /usr/bin/apk    → gerenciador de pacotes Alpine
-#   /lib/ld-musl-x86_64.so.1 → dynamic linker musl
-#   /lib/libc.musl-x86_64.so.1
-#
-# Depois de instalar, no terminal do Krypx:
-#   apk add firefox        → instala Firefox Linux
-#   apk add python3        → instala Python
-#   wget http://...        → baixa arquivos
-#
-# Pré-requisitos no host: curl, mtools, tar
-# Uso: bash scripts/install_alpine_base.sh [disk.img]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 set -euo pipefail
 
@@ -23,7 +23,7 @@ DISK="${1:-disk.img}"
 TMPDIR="$(mktemp -d /tmp/krypx-alpine.XXXXXX)"
 trap 'rm -rf "$TMPDIR"' EXIT
 
-# Alpine Linux minirootfs x86_64 (musl)
+
 ALPINE_VERSION="3.19.1"
 ALPINE_ARCH="x86_64"
 ALPINE_URL="https://dl-cdn.alpinelinux.org/alpine/v3.19/releases/${ALPINE_ARCH}/alpine-minirootfs-${ALPINE_VERSION}-${ALPINE_ARCH}.tar.gz"
@@ -44,30 +44,30 @@ ROOTFS="$TMPDIR/rootfs"
 
 echo "[3/4] Configurando ambiente Alpine..."
 
-# Configurar APK para repositórios Alpine
+
 mkdir -p "$ROOTFS/etc/apk"
 cat > "$ROOTFS/etc/apk/repositories" << 'EOF'
 https://dl-cdn.alpinelinux.org/alpine/v3.19/main
 https://dl-cdn.alpinelinux.org/alpine/v3.19/community
 EOF
 
-# Configurar resolv.conf
+
 cat > "$ROOTFS/etc/resolv.conf" << 'EOF'
 nameserver 8.8.8.8
 nameserver 1.1.1.1
 EOF
 
-# Configurar /etc/passwd básico
+
 cat > "$ROOTFS/etc/passwd" << 'EOF'
 root:x:0:0:root:/root:/bin/sh
 EOF
 
-# Configurar /etc/group básico
+
 cat > "$ROOTFS/etc/group" << 'EOF'
 root:x:0:root
 EOF
 
-# Configurar variáveis de ambiente padrão
+
 mkdir -p "$ROOTFS/etc/profile.d"
 cat > "$ROOTFS/etc/profile.d/krypx.sh" << 'EOF'
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
@@ -77,7 +77,7 @@ export DISPLAY=:0
 export PS1='\u@krypx:\w\$ '
 EOF
 
-# Criar diretórios necessários
+
 mkdir -p "$ROOTFS/root"
 mkdir -p "$ROOTFS/tmp"
 mkdir -p "$ROOTFS/var/run"
@@ -85,14 +85,14 @@ mkdir -p "$ROOTFS/proc"
 mkdir -p "$ROOTFS/sys"
 mkdir -p "$ROOTFS/dev"
 
-# Criar /init que inicia o shell
+
 cat > "$ROOTFS/init" << 'EOF'
-#!/bin/sh
+
 exec /bin/sh
 EOF
 chmod +x "$ROOTFS/init"
 
-# Criar symlinks úteis se não existirem
+
 cd "$ROOTFS/bin"
 for applet in sh ash ls cat cp mv rm mkdir rmdir ln echo pwd grep sed awk \
               find wget curl tar gzip gunzip bzip2 xz ps kill sleep date \
@@ -105,7 +105,7 @@ cd - > /dev/null
 
 echo "[4/4] Copiando rootfs para disk.img (via mtools)..."
 
-# Garantir que disk.img existe
+
 if [ ! -f "$DISK" ]; then
     echo "  Criando disk.img (2 GB, FAT32)..."
     dd if=/dev/zero of="$DISK" bs=1M count=2048 status=none
@@ -120,7 +120,7 @@ copy_tree() {
     local dst_prefix="$2"
 
     find "$src" | while read -r item; do
-        local rel="${item#$src}"
+        local rel="${item
         [ -z "$rel" ] && continue
         local dst="::${dst_prefix}${rel}"
 

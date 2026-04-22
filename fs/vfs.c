@@ -1,7 +1,3 @@
-/*
- * fs/vfs.c — Virtual File System
- * Dispatch de operações de arquivo para os drivers registrados.
- */
 
 #include <fs/vfs.h>
 #include <lib/string.h>
@@ -10,7 +6,7 @@
 
 vfs_node_t *vfs_root = 0;
 
-/* ── overlay mount table ──────────────────────────────────────────────────── */
+
 #define VFS_MAX_MOUNTS 16
 static struct { char path[64]; uint32_t pathlen; vfs_node_t *root; }
     g_mounts[VFS_MAX_MOUNTS];
@@ -38,7 +34,7 @@ void vfs_mount(const char *path, vfs_node_t *root) {
 
 uint32_t vfs_read(vfs_node_t *node, uint32_t offset, uint32_t size, uint8_t *buf) {
     if (!node) return 0;
-    /* Redireciona para mount point se houver */
+    
     if (node->mount_point) node = node->mount_point;
     if (node->read) return node->read(node, offset, size, buf);
     return 0;
@@ -121,21 +117,21 @@ vfs_node_t *vfs_resolve_parent(const char *path, char *name_out) {
     return vfs_resolve(pp[0] ? pp : "/");
 }
 
-/* Resolve path como "/dir/subdir/file" */
+
 vfs_node_t *vfs_resolve(const char *path) {
     if (!path || path[0] != '/') return 0;
 
-    /* Check overlay mount table first */
+    
     uint32_t mi;
     for (mi = 0; mi < g_nmounts; mi++) {
         uint32_t plen = g_mounts[mi].pathlen;
         if (plen == 0) continue;
-        /* exact match → return the root of that mount */
+        
         if (strcmp(path, g_mounts[mi].path) == 0)
             return g_mounts[mi].root;
-        /* prefix match: path starts with mount path + '/' */
+        
         if (strncmp(path, g_mounts[mi].path, plen) == 0 && path[plen] == '/') {
-            /* resolve remaining path starting inside the mounted root */
+            
             vfs_node_t *mroot = g_mounts[mi].root;
             const char *rest = path + plen + 1;
             if (*rest == '\0') return mroot;
@@ -156,12 +152,12 @@ vfs_node_t *vfs_resolve(const char *path) {
     if (!vfs_root) return 0;
     vfs_node_t *node = vfs_root;
 
-    /* Percorre cada componente do path */
-    const char *p = path + 1;   /* Pula a / inicial */
+    
+    const char *p = path + 1;   
     char component[256];
 
     while (*p) {
-        /* Extrai próximo componente */
+        
         int i = 0;
         while (*p && *p != '/') {
             if (i < 255) component[i++] = *p;
@@ -170,10 +166,10 @@ vfs_node_t *vfs_resolve(const char *path) {
         component[i] = 0;
         if (*p == '/') p++;
 
-        if (i == 0) continue;    /* // → ignora */
+        if (i == 0) continue;
         if (strcmp(component, ".") == 0) continue;
         if (strcmp(component, "..") == 0) {
-            /* Sobe um nível — não implementado completamente ainda */
+            
             continue;
         }
 

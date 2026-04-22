@@ -6,15 +6,13 @@
 #include <system.h>
 #include <types.h>
 
-/* Kernel PML4 — 4-level page tables, 4KB aligned */
+
 static pml4e_t kernel_pml4[512] __attribute__((aligned(4096)));
 static uint64_t kernel_pdpt[512] __attribute__((aligned(4096)));
 static uint64_t kernel_pd[512]   __attribute__((aligned(4096)));
 
 static pml4e_t *current_dir = 0;
 
-/* Allocate and zero a 4KB page table (returns pointer = physical address,
- * since we identity-map all RAM) */
 static uint64_t *alloc_table(void) {
     uint64_t phys = pmm_alloc_page();
     if (!phys) return 0;
@@ -30,7 +28,7 @@ void vmm_map_page(pml4e_t *pml4, uint64_t virt, uint64_t phys, uint64_t flags) {
     uint64_t i2 = PD_INDEX(virt);
     uint64_t i1 = PT_INDEX(virt);
 
-    /* PML4 → PDPT */
+    
     if (!(pml4[i4] & PAGE_PRESENT)) {
         uint64_t *pdpt = alloc_table();
         if (!pdpt) return;
@@ -38,7 +36,7 @@ void vmm_map_page(pml4e_t *pml4, uint64_t virt, uint64_t phys, uint64_t flags) {
     }
     uint64_t *pdpt = (uint64_t *)(pml4[i4] & ~0xFFFULL);
 
-    /* PDPT → PD */
+    
     if (!(pdpt[i3] & PAGE_PRESENT)) {
         uint64_t *pd = alloc_table();
         if (!pd) return;
@@ -46,7 +44,7 @@ void vmm_map_page(pml4e_t *pml4, uint64_t virt, uint64_t phys, uint64_t flags) {
     }
     uint64_t *pd = (uint64_t *)(pdpt[i3] & ~0xFFFULL);
 
-    /* PD: if it's a 2MB page, split into 4KB entries first */
+    
     if (pd[i2] & PAGE_2MB) {
         uint64_t base2mb = pd[i2] & ~((uint64_t)0x1FFFFF);
         uint64_t *pt = alloc_table();
@@ -57,7 +55,7 @@ void vmm_map_page(pml4e_t *pml4, uint64_t virt, uint64_t phys, uint64_t flags) {
         pd[i2] = (uint64_t)pt | PAGE_PRESENT | PAGE_WRITABLE | (flags & PAGE_USER);
     }
 
-    /* PD → PT */
+    
     if (!(pd[i2] & PAGE_PRESENT)) {
         uint64_t *pt = alloc_table();
         if (!pt) return;
@@ -65,7 +63,7 @@ void vmm_map_page(pml4e_t *pml4, uint64_t virt, uint64_t phys, uint64_t flags) {
     }
     uint64_t *pt = (uint64_t *)(pd[i2] & ~0xFFFULL);
 
-    /* PT → page */
+    
     pt[i1] = (phys & ~0xFFFULL) | PAGE_PRESENT | flags;
 
     __asm__ volatile ("invlpg (%0)" : : "r"(virt) : "memory");
@@ -112,20 +110,18 @@ void vmm_map_range(pml4e_t *pml4, uint64_t virt, uint64_t phys,
         vmm_map_page(pml4, virt + offset, phys + offset, flags);
 }
 
-/* Create a new address space (copy kernel mappings from kernel_pml4 entry 0) */
+
 pml4e_t *vmm_create_address_space(void) {
     uint64_t phys = pmm_alloc_page();
     if (!phys) return 0;
     pml4e_t *pml4 = (pml4e_t *)phys;
     uint32_t i;
     for (i = 0; i < 512; i++) pml4[i] = 0;
-    /* Share the kernel's first PML4 entry (identity map 0–4 GB) */
+    
     pml4[0] = kernel_pml4[0];
     return pml4;
 }
 
-/* Deep-copy all user-space pages (PAGE_USER set) from src into a new PML4.
- * Kernel mappings (entry 0, non-user pages) are shared, not copied. */
 pml4e_t *vmm_clone_address_space(pml4e_t *src_pml4) {
     if (!src_pml4) return 0;
     pml4e_t *dst = vmm_create_address_space();
@@ -141,7 +137,7 @@ pml4e_t *vmm_clone_address_space(pml4e_t *src_pml4) {
             for (i2 = 0; i2 < 512; i2++) {
                 if (!(src_pd[i2] & PAGE_PRESENT)) continue;
                 if (src_pd[i2] & PAGE_2MB) {
-                    /* 2MB page — only copy user pages, split into 4KB */
+                    
                     if (!(src_pd[i2] & PAGE_USER)) continue;
                     uint64_t src_base = src_pd[i2] & ~(uint64_t)0x1FFFFF;
                     uint64_t virt_base = ((uint64_t)i4 << 39) | ((uint64_t)i3 << 30) | ((uint64_t)i2 << 21);
@@ -172,7 +168,7 @@ pml4e_t *vmm_clone_address_space(pml4e_t *src_pml4) {
     return dst;
 }
 
-/* Free all user-space pages mapped in pml4 (called by execve to replace address space). */
+
 void vmm_free_user_pages(pml4e_t *pml4) {
     if (!pml4) return;
     uint32_t i4, i3, i2, i1;
@@ -220,16 +216,15 @@ void vmm_init(void) {
         kernel_pd[i]   = 0;
     }
 
-    /* Identity map 0–4 GB using 2MB pages:
-     * kernel_pml4[0] → kernel_pdpt → 4 × kernel_pd (via 4 PDPT entries × 512 × 2MB) */
-    /* One PDPT entry covers 1 GB; we need 4 entries for 4 GB */
-    /* Use single kernel_pdpt with entries 0-3 each pointing to a separate PD */
-    /* For simplicity, use four inline static PDs */
+    
+    
+    
+    
     static uint64_t kpd0[512] __attribute__((aligned(4096)));
     static uint64_t kpd1[512] __attribute__((aligned(4096)));
     static uint64_t kpd2[512] __attribute__((aligned(4096)));
     static uint64_t kpd3[512] __attribute__((aligned(4096)));
-    /* Fill each PD with 512 × 2MB identity entries */
+    
     for (i = 0; i < 512; i++) {
         kpd0[i] = ((uint64_t)i << 21) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_2MB;
         kpd1[i] = (((uint64_t)512 + i) << 21) | PAGE_PRESENT | PAGE_WRITABLE | PAGE_2MB;
@@ -243,9 +238,7 @@ void vmm_init(void) {
 
     kernel_pml4[0] = (uint64_t)kernel_pdpt | PAGE_PRESENT | PAGE_WRITABLE;
 
-    /* Reload CR3 with the new proper kernel PML4.
-     * The boot.asm already set up a minimal identity map; we keep it but
-     * switch to our managed kernel_pml4 for consistency. */
+    
     __asm__ volatile ("mov %0, %%cr3" : : "r"((uint64_t)kernel_pml4) : "memory");
     current_dir = kernel_pml4;
 }

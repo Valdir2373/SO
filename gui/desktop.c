@@ -38,11 +38,11 @@
 
 static bool menu_open = false;
 
-/* ── Wallpaper ─────────────────────────────────────────────────────────── */
+
 static uint32_t *wp_pixels = 0;
 static int       wp_w = 0, wp_h = 0;
 
-/* ── Desktop icons ─────────────────────────────────────────────────────── */
+
 typedef struct { const char *name; void (*open)(void); int x,y; uint32_t col; } DIcon;
 static void open_image_viewer(void) { image_viewer_open(0); }
 
@@ -57,7 +57,7 @@ static const DIcon ICONS[] = {
 #define ICON_W 64
 #define ICON_H 54
 
-/* Last click for double-click detection */
+
 static uint32_t last_click_t  = 0;
 static int      last_click_x  = -100;
 static int      last_click_y  = -100;
@@ -74,15 +74,15 @@ static int  term_row = 0;
 static int  term_col = 0;
 static char term_input[256];
 static int  term_input_len = 0;
-static char term_cwd[256];  /* diretório atual */
+static char term_cwd[256];  
 
-/* Linux shell subprocess (WSL-style) */
+
 static process_t  *term_shell_proc   = 0;
-static term_pipe_t term_shell_stdin_buf;   /* GUI → shell */
-static term_pipe_t term_shell_stdout_buf;  /* shell → GUI */
+static term_pipe_t term_shell_stdin_buf;   
+static term_pipe_t term_shell_stdout_buf;  
 static bool        term_linux_mode  = false;
 
-/* Histórico de comandos */
+
 #define TERM_HIST_SIZE  20
 static char term_hist[TERM_HIST_SIZE][256];
 static int  term_hist_count = 0;
@@ -119,7 +119,7 @@ static void term_puts(const char *s) {
 }
 
 
-/* Resolve path relativo ou absoluto contra term_cwd */
+
 static void term_resolve(const char *arg, char *out) {
     if (!arg || !arg[0]) { strcpy(out, term_cwd); return; }
     if (arg[0] == '/') { strncpy(out, arg, 255); out[255]=0; return; }
@@ -140,12 +140,12 @@ static void term_resolve(const char *arg, char *out) {
     strncat(out, arg, 255 - strlen(out));
 }
 
-/* Imprime uint32 decimal */
+
 static void term_put_dec(uint32_t v) {
     char buf[12]; itoa((int)v, buf, 10); term_puts(buf);
 }
 
-/* ---- comandos reais ---- */
+
 
 static void term_cmd_ls(const char *arg) {
     char path[256]; term_resolve(arg, path);
@@ -317,7 +317,7 @@ static void term_cmd_ping(const char *arg) {
 }
 
 static void term_cmd_write(const char *arg) {
-    /* write <arquivo> <conteudo> */
+    
     if (!arg || !arg[0]) { term_puts("uso: write <arquivo> <texto>\n"); return; }
     const char *sp = arg;
     while (*sp && *sp != ' ') sp++;
@@ -326,12 +326,12 @@ static void term_cmd_write(const char *arg) {
     int plen = (int)(sp - arg);
     if (plen > 255) plen = 255;
     int pi; for (pi=0;pi<plen;pi++) path[pi]=arg[pi]; path[pi]=0;
-    sp++; /* pula espaço */
+    sp++; 
     char rpath[256]; term_resolve(path, rpath);
     char name[256];
     vfs_node_t *dir = vfs_resolve_parent(rpath, name);
     if (!dir) { term_puts("write: caminho invalido\n"); return; }
-    /* Cria se não existir */
+    
     vfs_node_t *node = vfs_resolve(rpath);
     if (!node) {
         vfs_create(dir, name, 0644);
@@ -369,9 +369,9 @@ static void term_cmd_help(void) {
     term_puts("  shutdown / reboot     desligar / reiniciar\n");
 }
 
-/* ── Linux shell (WSL-style) ────────────────────────────────────────────── */
 
-/* Drain output from the Linux shell into the terminal display buffer */
+
+
 static void term_drain_shell_output(void) {
     if (!term_shell_proc) return;
     int c;
@@ -380,9 +380,9 @@ static void term_drain_shell_output(void) {
     }
 }
 
-/* Launch Alpine's /bin/sh (busybox) as the terminal shell */
+
 static void term_start_linux_shell(void) {
-    /* Try common shell paths from the Alpine rootfs on disk */
+    
     const char *sh_paths[] = { "/bin/sh", "/bin/busybox", "/usr/bin/sh", 0 };
     vfs_node_t *sh_node = 0;
     const char *sh_path = 0;
@@ -417,7 +417,7 @@ static void term_start_linux_shell(void) {
     process_t *proc = process_create("sh", 0, 2);
     if (!proc) { kfree(data); term_puts("Falha ao criar processo\n"); return; }
 
-    /* Wire up I/O pipes */
+    
     memset(&term_shell_stdin_buf,  0, sizeof(term_pipe_t));
     memset(&term_shell_stdout_buf, 0, sizeof(term_pipe_t));
     proc->stdin_pipe  = &term_shell_stdin_buf;
@@ -449,9 +449,9 @@ static void term_start_linux_shell(void) {
     term_puts("Processo: "); term_puts(sh_path); term_puts("\n\n");
 }
 
-/* PATH directories to search for executables */
+
 static const char *exec_path[] = {
-    "",          /* absolute paths used directly */
+    "",          
     "/bin",
     "/usr/bin",
     "/usr/local/bin",
@@ -460,7 +460,7 @@ static const char *exec_path[] = {
     0
 };
 
-/* Resolve a command name to a full path */
+
 static vfs_node_t *find_in_path(const char *cmd, char *full_out) {
     if (cmd[0] == '/') {
         vfs_node_t *n = vfs_resolve(cmd);
@@ -487,7 +487,7 @@ static void term_run_exec(const char *path, const char *args) {
     char full[256]; full[0] = 0;
     vfs_node_t *node = find_in_path(path, full);
     if (!node) {
-        /* Also try cwd */
+        
         char cwdpath[256];
         term_resolve(path, cwdpath);
         node = vfs_resolve(cwdpath);
@@ -504,12 +504,12 @@ static void term_run_exec(const char *path, const char *args) {
     uint32_t size = node->size;
     if (size == 0) { term_puts("Erro: arquivo vazio\n"); return; }
 
-    /* Read entire binary — support large files (Firefox ~80MB) */
+    
     uint8_t *data = (uint8_t *)kmalloc(size);
     if (!data) { term_puts("Erro: sem memoria\n"); return; }
     vfs_read(node, 0, size, data);
 
-    /* Quick ELF check */
+    
     if (size < 4 || data[0] != 0x7F || data[1] != 'E' ||
         data[2] != 'L'  || data[3] != 'F') {
         kfree(data);
@@ -524,7 +524,7 @@ static void term_run_exec(const char *path, const char *args) {
     process_t *proc = process_create(pname, 0, 2);
     if (!proc) { kfree(data); term_puts("Erro: falha ao criar processo\n"); return; }
 
-    /* Inherit cwd from terminal */
+    
     strncpy(proc->cwd, term_cwd, 255);
 
     elf_load_result_t res;
@@ -540,8 +540,8 @@ static void term_run_exec(const char *path, const char *args) {
     proc->heap_end   = res.heap_base;
     proc->compat_mode = COMPAT_LINUX;
 
-    /* Set DISPLAY env hint for X11 apps */
-    /* (ld-musl will see DISPLAY=:0 via the process env we pass) */
+    
+    
 
     scheduler_add(proc);
 
@@ -553,9 +553,9 @@ static void term_run_exec(const char *path, const char *args) {
     (void)args;
 }
 
-/* Separa "cmd arg1 arg2..." → cmd e rest */
+
 static const char *term_arg(const char *line, int n) {
-    /* retorna ponteiro para o n-ésimo token (0-based), ou NULL */
+    
     while (*line == ' ') line++;
     int i;
     for (i = 0; i < n; i++) {
@@ -570,7 +570,7 @@ static void term_handle_command(const char *cmd) {
     while (*cmd == ' ') cmd++;
     if (!cmd[0]) return;
 
-    /* Salva no histórico */
+    
     if (term_hist_count < TERM_HIST_SIZE) {
         strncpy(term_hist[term_hist_count++], cmd, 255);
     } else {
@@ -580,12 +580,12 @@ static void term_handle_command(const char *cmd) {
     }
     term_hist_idx = -1;
 
-    /* Extrai verbo */
+    
     char verb[32]; int vi = 0;
     while (cmd[vi] && cmd[vi] != ' ' && vi < 31) { verb[vi] = cmd[vi]; vi++; }
     verb[vi] = 0;
 
-    /* Pula para argumentos */
+    
     const char *rest = cmd + vi;
     while (*rest == ' ') rest++;
 
@@ -662,10 +662,10 @@ static void term_handle_command(const char *cmd) {
             char src[256], dst[256];
             int n = (int)(s2 - 1 - rest); if (n > 255) n = 255;
             int si; for (si = 0; si < n; si++) src[si] = rest[si]; src[n] = 0;
-            term_resolve(src, dst); /* resolve src */
+            term_resolve(src, dst); 
             char fsrc[256]; strcpy(fsrc, dst);
             term_resolve(s2, dst);
-            /* Simple copy */
+            
             vfs_node_t *snode = vfs_resolve(fsrc);
             if (!snode) { term_puts("cp: origem nao encontrada\n"); }
             else {
@@ -685,11 +685,11 @@ static void term_handle_command(const char *cmd) {
         }
     }
     else if (strcmp(verb, "mv") == 0) {
-        /* mv = cp + rm */
+        
         term_puts("mv: use cp + rm\n");
     }
     else if (strcmp(verb, "chmod") == 0 || strcmp(verb, "chown") == 0) {
-        term_puts("OK\n"); /* stub */
+        term_puts("OK\n"); 
     }
     else if (strcmp(verb, "export") == 0 || strcmp(verb, "env") == 0) {
         term_puts("DISPLAY=:0\nHOME=/home/root\nPATH=/bin:/usr/bin:/usr/local/bin\n");
@@ -700,7 +700,7 @@ static void term_handle_command(const char *cmd) {
         if (n) { term_puts(fp); term_puts("\n"); }
         else { term_puts("which: nao encontrado: "); term_puts(rest); term_puts("\n"); }
     }
-    /* Try to execute as ELF binary from PATH */
+    
     else {
         char fp[256];
         vfs_node_t *n = find_in_path(verb, fp);
@@ -716,7 +716,7 @@ static void term_handle_command(const char *cmd) {
 }
 
 static void term_on_paint(window_t *win) {
-    /* Pull any new shell output into the display buffer */
+    
     if (term_linux_mode) term_drain_shell_output();
 
     canvas_init(fb.backbuf, fb.width, fb.height, fb.pitch);
@@ -738,7 +738,7 @@ static void term_on_paint(window_t *win) {
     int input_y = by + TERM_LINES * CHAR_HEIGHT + 4;
     canvas_fill_rect(bx, input_y, win->content_w, CHAR_HEIGHT + 6, 0x00111111);
 
-    /* Prompt: Linux mode shows "> ", built-in mode shows full path */
+    
     char prompt[64];
     if (term_linux_mode) {
         prompt[0] = '>'; prompt[1] = ' '; prompt[2] = 0;
@@ -763,7 +763,7 @@ static void term_on_paint(window_t *win) {
 static void term_on_keydown(window_t *win, char key) {
     (void)win;
 
-    /* Flush any pending shell output first */
+    
     if (term_linux_mode) term_drain_shell_output();
 
     if (key == '\n') {
@@ -771,16 +771,16 @@ static void term_on_keydown(window_t *win, char key) {
 
         if (term_linux_mode && term_shell_proc &&
             term_shell_proc->state != PROC_ZOMBIE) {
-            /* Send the typed line to the Linux shell's stdin */
+            
             int j;
             for (j = 0; j < term_input_len; j++)
                 process_stdin_push(term_shell_proc, term_input[j]);
             process_stdin_push(term_shell_proc, '\n');
-            /* Local echo of typed command */
+            
             term_puts(term_input);
             term_putchar('\n');
         } else {
-            /* Krypx built-in shell fallback */
+            
             term_puts("> ");
             term_puts(term_input);
             term_puts("\n");
@@ -815,15 +815,15 @@ static void draw_wallpaper(void) {
         canvas_draw_string(lx + 4, ly + 20, "Custom OS v0.1", 0x00636E72, COLOR_TRANSPARENT);
     }
 
-    /* Draw desktop icons */
+    
     int i;
     for (i = 0; ICONS[i].name; i++) {
         int ix = ICONS[i].x, iy = ICONS[i].y;
         canvas_fill_rounded_rect(ix, iy, ICON_W, ICON_W, 8, ICONS[i].col);
-        /* Icon letter */
+        
         char ltr[2] = { ICONS[i].name[0], 0 };
         canvas_draw_string(ix + ICON_W/2 - 4, iy + ICON_W/2 - 8, ltr, 0x00FFFFFF, COLOR_TRANSPARENT);
-        /* Label below */
+        
         int lw = canvas_string_width(ICONS[i].name);
         canvas_draw_string(ix + ICON_W/2 - lw/2, iy + ICON_W + 2,
                            ICONS[i].name, 0x00FFFFFF, COLOR_TRANSPARENT);
@@ -833,7 +833,7 @@ static void draw_wallpaper(void) {
 void desktop_set_wallpaper(const char *path) {
     if (!path || !path[0]) return;
 
-    /* Detect extension */
+    
     int plen = (int)strlen(path);
     const char *ext = path + plen;
     while (ext > path && *ext != '.') ext--;
@@ -897,7 +897,7 @@ static void draw_taskbar(void) {
     canvas_draw_string(fb.width - 80, ty + 12, clock,
                        0x00DFE6E9, COLOR_TRANSPARENT);
 
-    /* Volume controls (right of clock) — moved left */
+    
     {
         int vol_x = (int)fb.width - 210;
         canvas_fill_rounded_rect(vol_x,      ty + 7, 22, 26, 4, 0x00333333);
@@ -1012,7 +1012,7 @@ static void desktop_taskbar_click(int x, int y) {
         return;
     }
     
-    /* Volume buttons */
+    
     int vol_x = (int)fb.width - 210;
     if (y >= ty + 7 && y <= ty + 33) {
         if (x >= vol_x && x <= vol_x + 22) {
@@ -1032,7 +1032,7 @@ static void desktop_taskbar_click(int x, int y) {
     wm_taskbar_entry_click(x, y, 184, ty + 6, 110, 28, (int)fb.width - 220);
 }
 
-/* Check if click hits a desktop icon and handle double-click */
+
 static void desktop_icon_click(int mx, int my) {
     int i;
     for (i = 0; ICONS[i].name; i++) {
@@ -1042,11 +1042,11 @@ static void desktop_icon_click(int mx, int my) {
             int dx = mx - last_click_x, dy = my - last_click_y;
             if (dx < 0) dx = -dx; if (dy < 0) dy = -dy;
             if (now - last_click_t < 600 && dx < 10 && dy < 10) {
-                /* Double-click: open */
+                
                 if (ICONS[i].open) {
                     ICONS[i].open();
                 } else {
-                    /* Terminal icon: bring terminal to front */
+                    
                     if (terminal_win) {
                         terminal_win->flags &= ~WIN_MINIMIZED;
                         wm_focus(terminal_win);
@@ -1090,10 +1090,10 @@ void desktop_init(void) {
         term_puts("Krypx Terminal — Linux Subsystem\n");
         term_puts("Iniciando shell...\n\n");
 
-        /* Try to start the Alpine Linux shell */
+        
         term_start_linux_shell();
         if (!term_linux_mode) {
-            /* Fallback: built-in Krypx commands */
+            
             term_puts("Shell interno Krypx ativo.\n");
             term_puts("Digite 'help' para ver comandos.\n\n");
         }
@@ -1249,7 +1249,7 @@ void desktop_run(void) {
                     desktop_taskbar_click(mx, my);
                 } else {
                     if (menu_open) { menu_open = false; }
-                    /* Check desktop icons first */
+                    
                     if (!wm_window_at(mx, my)) {
                         desktop_icon_click(mx, my);
                     }

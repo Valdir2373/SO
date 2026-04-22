@@ -1,12 +1,12 @@
 
-/* Minimal PNG decoder — 8-bit RGB / RGBA / Grayscale, non-interlaced */
+
 
 #include <lib/png.h>
 #include <mm/heap.h>
 #include <lib/string.h>
 #include <types.h>
 
-/* ── Bit-stream reader (LSB-first, for DEFLATE) ────────────────────────── */
+
 typedef struct { const uint8_t *b; uint32_t p,n,bits; int nb; } BR;
 
 static void br_init(BR *r,const uint8_t *b,uint32_t n){r->b=b;r->p=0;r->n=n;r->bits=0;r->nb=0;}
@@ -16,7 +16,7 @@ static uint32_t br_read(BR *r,int n){
     uint32_t v=r->bits&((1u<<n)-1); r->bits>>=n; r->nb-=n; return v;
 }
 
-/* Byte-aware read: consumes from the buffered whole bytes first */
+
 static uint8_t br_byte(BR *r){
     if(r->nb>=8){uint8_t b=(uint8_t)r->bits;r->bits>>=8;r->nb-=8;return b;}
     r->bits=0;r->nb=0;
@@ -27,7 +27,7 @@ static void br_align(BR *r){int s=r->nb&7;r->bits>>=s;r->nb-=s;}
 
 static uint16_t br_le16(BR *r){uint8_t a=br_byte(r),b=br_byte(r);return(uint16_t)(a|(b<<8));}
 
-/* ── Canonical Huffman tree ─────────────────────────────────────────────── */
+
 #define HMAXSYM 320
 typedef struct{int ml;uint16_t first[16],cnt[16];int base[16];uint16_t s[HMAXSYM];}HT;
 
@@ -51,7 +51,7 @@ static uint16_t ht_dec(HT *h,BR *r){
     return 0xFFFF;
 }
 
-/* ── DEFLATE length/distance tables ─────────────────────────────────────── */
+
 static const uint8_t  LX[29]={0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,0};
 static const uint16_t LB[29]={3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258};
 static const uint8_t  DX[30]={0,0,0,0,1,1,2,2,3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13};
@@ -65,10 +65,10 @@ static void fixed_huff(HT *hl,HT *hd){
     for(i=0;i<30;i++)ls[i]=5;ht_build(hd,ls,30);
 }
 
-/* ── Inflate (DEFLATE) ───────────────────────────────────────────────────── */
+
 static uint32_t inflate(const uint8_t *src,uint32_t slen,uint8_t *dst,uint32_t dlen){
     BR r;br_init(&r,src,slen);
-    /* zlib header */
+    
     uint8_t flg=0;br_byte(&r);flg=br_byte(&r);
     if(flg&0x20){br_byte(&r);br_byte(&r);br_byte(&r);br_byte(&r);}
     uint32_t dp=0;int bfinal=0;
@@ -114,7 +114,7 @@ static uint32_t inflate(const uint8_t *src,uint32_t slen,uint8_t *dst,uint32_t d
     return dp;
 }
 
-/* ── PNG helpers ─────────────────────────────────────────────────────────── */
+
 static uint32_t ru32(const uint8_t *b){return((uint32_t)b[0]<<24)|((uint32_t)b[1]<<16)|((uint32_t)b[2]<<8)|b[3];}
 
 static uint8_t paeth(int a,int b,int c){
@@ -123,7 +123,7 @@ static uint8_t paeth(int a,int b,int c){
     return(pa<=pb&&pa<=pc)?(uint8_t)a:(pb<=pc)?(uint8_t)b:(uint8_t)c;
 }
 
-/* ── Main decode function ─────────────────────────────────────────────────── */
+
 uint32_t *png_decode(const uint8_t *data,uint32_t size,int *ow,int *oh){
     static const uint8_t SIG[8]={137,80,78,71,13,10,26,10};
     if(size<33||memcmp(data,SIG,8)!=0)return 0;
@@ -163,7 +163,7 @@ uint32_t *png_decode(const uint8_t *data,uint32_t size,int *ow,int *oh){
 
     inflate(idat,ilen,raw,rlen);kfree(idat);
 
-    /* Filter reconstruction */
+    
     uint32_t y,x;
     for(y=0;y<h;y++){
         uint8_t *row=raw+y*(stride+1)+1;

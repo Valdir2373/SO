@@ -1,10 +1,10 @@
 
-/* AES-128 — FIPS 197  +  AES-CCMP (IEEE 802.11i) */
+
 
 #include <lib/aes.h>
 #include <lib/string.h>
 
-/* ── S-box / inv-S-box ──────────────────────────────────────────────────── */
+
 static const uint8_t sbox[256] = {
     0x63,0x7c,0x77,0x7b,0xf2,0x6b,0x6f,0xc5,0x30,0x01,0x67,0x2b,0xfe,0xd7,0xab,0x76,
     0xca,0x82,0xc9,0x7d,0xfa,0x59,0x47,0xf0,0xad,0xd4,0xa2,0xaf,0x9c,0xa4,0x72,0xc0,
@@ -139,11 +139,9 @@ void aes128_decrypt(const aes128_ctx_t *ctx, const uint8_t in[16], uint8_t out[1
     memcpy(out, s, 16);
 }
 
-/* ── AES-CCMP (WPA2) ──────────────────────────────────────────────────────
- * M=8 (8-byte MIC), L=2 (15-13=2 length octets), nonce=13 bytes. */
 
 static void ccm_ctr_block(const uint8_t nonce[13], uint32_t ctr, uint8_t blk[16]) {
-    blk[0] = 0x01; /* flags: L-1=1 */
+    blk[0] = 0x01; 
     memcpy(blk+1, nonce, 13);
     blk[14]=(uint8_t)(ctr>>8);
     blk[15]=(uint8_t)(ctr);
@@ -162,13 +160,13 @@ void aes_ccmp_encrypt(const uint8_t key[16], const uint8_t nonce[13],
     uint8_t b[16], x[16], y[16];
     int i;
 
-    /* CBC-MAC: B0 flags */
-    b[0] = 0x59; /* has-AAD=1, M=(8-2)/2=3 <<3, L-1=1 => 0101 1001 */
+    
+    b[0] = 0x59; 
     memcpy(b+1, nonce, 13);
     b[14]=(uint8_t)(data_len>>8); b[15]=(uint8_t)(data_len);
     aes128_encrypt(&ctx, b, x);
 
-    /* CBC-MAC: AAD length + AAD */
+    
     memset(b, 0, 16);
     b[0]=(uint8_t)(aad_len>>8); b[1]=(uint8_t)(aad_len);
     uint16_t copy = aad_len < 14 ? aad_len : 14;
@@ -182,7 +180,7 @@ void aes_ccmp_encrypt(const uint8_t key[16], const uint8_t nonce[13],
         aes128_encrypt(&ctx, x, x);
     }
 
-    /* CBC-MAC: data */
+    
     for (i=0; i<data_len; i+=16) {
         memset(b, 0, 16);
         uint16_t chunk = (uint16_t)(data_len-i); if(chunk>16)chunk=16;
@@ -190,12 +188,12 @@ void aes_ccmp_encrypt(const uint8_t key[16], const uint8_t nonce[13],
         xor16(x, b);
         aes128_encrypt(&ctx, x, x);
     }
-    /* T = first 8 bytes of x; encrypt with CTR0 */
+    
     ccm_ctr_block(nonce, 0, b);
     aes128_encrypt(&ctx, b, y);
     for (i=0;i<8;i++) mic_out[i]=x[i]^y[i];
 
-    /* CTR encrypt data */
+    
     uint32_t ctr = 1;
     for (i=0; i<data_len; i+=16) {
         ccm_ctr_block(nonce, ctr++, b);
@@ -209,7 +207,7 @@ int aes_ccmp_decrypt(const uint8_t key[16], const uint8_t nonce[13],
                      const uint8_t *aad, uint16_t aad_len,
                      uint8_t *data, uint16_t data_len,
                      const uint8_t mic_in[8]) {
-    /* Decrypt CTR first, then verify CBC-MAC */
+    
     aes128_ctx_t ctx;
     aes128_init(&ctx, key);
     uint8_t b[16], y[16];
@@ -223,7 +221,7 @@ int aes_ccmp_decrypt(const uint8_t key[16], const uint8_t nonce[13],
     }
     uint8_t mic_check[8];
     aes_ccmp_encrypt(key, nonce, aad, aad_len, data, data_len, mic_check);
-    /* Re-encrypt data to restore */
+    
     ctr=1;
     for (i=0; i<data_len; i+=16) {
         ccm_ctr_block(nonce, ctr++, b);

@@ -1,5 +1,5 @@
 
-/* Global clipboard — plain-text copy/paste between windows */
+
 
 #include <gui/clipboard.h>
 #include <lib/string.h>

@@ -12,7 +12,7 @@
 #include <lib/string.h>
 #include <types.h>
 
-/* syscall_entry is defined in boot/syscall_entry.asm */
+
 extern void syscall_entry(void);
 extern uint64_t g_syscall_kernel_rsp;
 
@@ -182,7 +182,7 @@ static int64_t sys_waitpid(int64_t pid, int64_t *status) {
     p->waiting_child = true;
     p->state = PROC_BLOCKED;
     schedule();
-    /* After wakeup */
+    
     if (status) *status = p->wait_result;
     return 0;
 }
@@ -201,7 +201,7 @@ static int64_t sys_exec(const char *path, const char **argv) {
     if (!data) return -1;
     vfs_read(node, 0, node->size, data);
 
-    /* Derive process name */
+    
     const char *pname = path;
     const char *t = path;
     while (*t) { if (*t == '/') pname = t + 1; t++; }
@@ -221,7 +221,7 @@ static int64_t sys_exec(const char *path, const char **argv) {
     proc->heap_start = res.heap_base;
     proc->heap_end   = res.heap_base;
 
-    proc->compat_mode = COMPAT_LINUX;  /* all exec'd ELFs use Linux compat */
+    proc->compat_mode = COMPAT_LINUX;  
 
     scheduler_add(proc);
     return (int64_t)proc->pid;
@@ -237,8 +237,6 @@ static int64_t sys_rename(const char *src, const char *dst) {
     return vfs_rename(sdir, sname, ddir, dname);
 }
 
-/* int 0x80 handler — Krypx native ABI (64-bit):
- * rax = syscall number, rdi = arg1, rsi = arg2, rdx = arg3 */
 void syscall_handler(registers_t *regs) {
     process_t *cur = process_current();
     if (cur && cur->compat_mode == COMPAT_LINUX) {
@@ -270,40 +268,34 @@ void syscall_handler(registers_t *regs) {
 }
 
 void syscall_init(void) {
-    /* int 0x80 — Krypx native ABI */
+    
     idt_register_handler(IRQ_SYSCALL, syscall_handler);
 
-    /* ── Set up SYSCALL/SYSRETQ instruction path (x86_64 Linux ABI) ──────── */
+    
 
-    /* 1. Enable SCE (SysCall Enable) bit in EFER MSR */
+    
     uint64_t efer = rdmsr64(0xC0000080UL);
-    efer |= 1ULL;   /* bit 0 = SCE */
+    efer |= 1ULL;   
     wrmsr64(0xC0000080UL, efer);
 
-    /* 2. STAR MSR — segment selectors for SYSCALL and SYSRETQ
-     *   STAR[47:32] = 0x0008 → on SYSCALL: CS=0x08 (kernel code), SS=0x10 (kernel data)
-     *   STAR[63:48] = 0x0018 → on SYSRETQ: CS=0x18+16=0x28|RPL3=0x2B (user code64)
-     *                                       SS=0x18+8 =0x20|RPL3=0x23 (user data)
-     * (GDT layout: 0x08=kernel code64, 0x10=kernel data,
-     *              0x18=user code32, 0x20=user data, 0x28=user code64)
-     */
+    
     uint64_t star = (0x0018ULL << 48) | (0x0008ULL << 32);
     wrmsr64(0xC0000081UL, star);
 
-    /* 3. LSTAR MSR — handler address for SYSCALL */
+    
     wrmsr64(0xC0000082UL, (uint64_t)(uintptr_t)syscall_entry);
 
-    /* 4. FMASK MSR — RFLAGS bits to clear on SYSCALL (clear IF=bit9 to disable IRQs) */
+    
     wrmsr64(0xC0000084UL, 0x200ULL);
 
-    /* 5. Init kernel-service data structures for 64-bit Linux compat */
+    
     linux_syscall64_init();
 
-    /* 6. Seed g_syscall_kernel_rsp with a valid stack for the first syscall */
-    /* It will be updated to each process's kernel_stack on every context switch */
+    
+    
     {
         extern uint64_t g_syscall_kernel_rsp;
-        /* Temporarily point to a static emergency stack until first schedule() */
+        
         static uint8_t _emergency_kstack[4096] __attribute__((aligned(16)));
         g_syscall_kernel_rsp = (uint64_t)(uintptr_t)(_emergency_kstack + 4096);
     }

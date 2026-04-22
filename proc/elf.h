@@ -5,7 +5,7 @@
 #include <types.h>
 #include <proc/process.h>
 
-/* ELF32 header */
+
 typedef struct {
     uint8_t  e_ident[16];
     uint16_t e_type;
@@ -23,7 +23,7 @@ typedef struct {
     uint16_t e_shstrndx;
 } __attribute__((packed)) elf32_hdr_t;
 
-/* ELF32 program header */
+
 typedef struct {
     uint32_t p_type;
     uint32_t p_offset;
@@ -35,7 +35,7 @@ typedef struct {
     uint32_t p_align;
 } __attribute__((packed)) elf32_phdr_t;
 
-/* ELF64 header */
+
 typedef struct {
     uint8_t  e_ident[16];
     uint16_t e_type;
@@ -53,7 +53,7 @@ typedef struct {
     uint16_t e_shstrndx;
 } __attribute__((packed)) elf64_hdr_t;
 
-/* ELF64 program header */
+
 typedef struct {
     uint32_t p_type;
     uint32_t p_flags;
@@ -65,7 +65,7 @@ typedef struct {
     uint64_t p_align;
 } __attribute__((packed)) elf64_phdr_t;
 
-/* Program header types */
+
 #define PT_NULL      0
 #define PT_LOAD      1
 #define PT_DYNAMIC   2
@@ -73,15 +73,15 @@ typedef struct {
 #define PT_PHDR      6
 #define PT_GNU_STACK 0x6474E551U
 
-/* ELF types */
+
 #define ET_EXEC  2
 #define ET_DYN   3
 
-/* Machine types */
+
 #define EM_386    3
 #define EM_X86_64 62
 
-/* ELF ident indices */
+
 #define EI_CLASS   4
 #define EI_DATA    5
 #define EI_OSABI   7

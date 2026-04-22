@@ -19,7 +19,7 @@ void hmac_sha1(const uint8_t *key, uint32_t klen,
                const uint8_t *msg, uint32_t mlen,
                uint8_t mac[20]);
 
-/* PBKDF2-HMAC-SHA1: RFC 2898 (used for WPA2 PMK derivation) */
+
 void pbkdf2_hmac_sha1(const uint8_t *pass, uint32_t plen,
                       const uint8_t *salt, uint32_t slen,
                       uint32_t iters, uint8_t *out, uint32_t olen);

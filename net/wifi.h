@@ -28,52 +28,52 @@ typedef enum {
 typedef struct {
     char     ssid[WIFI_SSID_LEN];
     uint8_t  bssid[6];
-    int8_t   rssi;               /* signal strength dBm */
+    int8_t   rssi;               
     uint8_t  channel;
     wifi_security_t security;
     bool     valid;
 } wifi_network_t;
 
-/* Populated by the driver */
+
 extern wifi_network_t g_wifi_networks[WIFI_MAX_NETWORKS];
 extern int            g_wifi_network_count;
 extern wifi_state_t   g_wifi_state;
 extern char           g_wifi_status_msg[80];
-extern int            g_wifi_connected_idx;   /* index into g_wifi_networks */
+extern int            g_wifi_connected_idx;   
 
-/* Called by kernel to initialise WiFi subsystem */
+
 void wifi_init(void);
 
-/* Start background scan (non-blocking) */
+
 void wifi_scan(void);
 
-/* Connect to network at index idx with given password (NULL = open) */
+
 void wifi_connect(int idx, const char *password);
 
-/* Disconnect */
+
 void wifi_disconnect(void);
 
-/* Poll — call from desktop event loop */
+
 void wifi_poll(void);
 
-/* True if fully connected and IP obtained */
+
 bool wifi_is_connected(void);
 
-/* Called by driver when a beacon/probe-response frame arrives */
+
 void wifi_on_beacon(const uint8_t *bssid, const char *ssid, uint8_t ssid_len,
                     int8_t rssi, uint8_t channel, wifi_security_t sec);
 
-/* Called by driver when an EAPOL frame arrives */
+
 void wifi_on_eapol(const uint8_t *data, uint16_t len);
 
-/* Called by driver when association completes */
+
 void wifi_on_assoc_ok(void);
 void wifi_on_assoc_fail(void);
 
-/* Send a raw 802.11 frame via the driver (filled by wifi.c) */
+
 void wifi_driver_send(const uint8_t *frame, uint16_t len);
 
-/* Called by the RTL driver to deliver a received 802.11 frame */
+
 void wifi_rx_frame(const uint8_t *frame, uint16_t len);
 
 #endif
